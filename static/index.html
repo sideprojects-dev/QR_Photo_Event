@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/script.js"></script>
+  <title>Album Nuntă</title>
+</head>
+<body>
+  <h1>Album Nuntă</h1>
+
+  <!-- Live camera feed -->
+  <video id="viewfinder" autoplay playsinline muted></video>
+
+  <br>
+
+  <!-- Camera controls -->
+  <button class="btn" id="btnFlip"    onclick="flipCamera()">🔄 Întoarce camera</button>
+  <button class="btn" id="btnCapture" onclick="takePhoto()">📸</button>
+  <button class="btn" id="btnRecord"  onclick="toggleVideo()">⏺ Înregistrează</button>
+
+  <!-- Preview after capture -->
+  <img id="preview" alt="previzualizare">
+  <video id="previewVideo" controls style="display:none; width:100%; max-width:500px; border-radius:12px; margin-top:10px;"></video>
+
+  <!-- Send button appears after capture -->
+  <br>
+  <button class="btn" id="btnSend" onclick="sendFile()">☁️ Trimite</button>
+
+  <p id="message"></p>
+
+</body>
+</html>
