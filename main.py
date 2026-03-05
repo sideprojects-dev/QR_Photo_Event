@@ -6,6 +6,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
+from dotenv import load_dotenv
 import io
 import os
 import uuid
@@ -13,8 +14,10 @@ from datetime import datetime
 
 app = FastAPI()
 
+load_dotenv()  # Load environment variables from .env file
+
 CLIENT_SECRET_FILE = "client_secret.json"
-FOLDER_ID = "13PKfRuK14YDU6rZvb2quNP6u52ZsBiww"  # ← înlocuiește cu ID-ul tău din Drive
+FOLDER_ID = os.getenv("FOLDER_ID")
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 TOKEN_FILE = "token.json"
 

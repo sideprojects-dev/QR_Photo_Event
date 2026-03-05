@@ -213,3 +213,4 @@ client_secret.json
 code_verifier.txt
 token.json
 flow_state.pkl
+.env
