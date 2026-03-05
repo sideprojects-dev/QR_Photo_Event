@@ -7,10 +7,12 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
+from datetime import datetime
 import io
 import os
 import uuid
-from datetime import datetime
+import json
+import tempfile
 
 app = FastAPI()
 
@@ -24,16 +26,14 @@ TOKEN_FILE = "token.json"
 def get_drive_service():
     creds = None
 
-    # Load existing token if available
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    # Read token from environment variable instead of file
+    token_json = os.getenv("token.json")
+    if token_json:
+        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
 
-    # If no valid token, raise error (user needs to visit /auth/login)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(TOKEN_FILE, "w") as f:
-                f.write(creds.to_json())
         else:
             raise Exception("Not authenticated. Visit /auth/login")
 
@@ -48,44 +48,46 @@ def home():
 
 @app.get("/auth/login")
 def auth_login():
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
-        scopes=SCOPES,
-        redirect_uri="http://localhost:8000/auth/callback"
-    )
-    auth_url, _ = flow.authorization_url(
-        prompt="consent",
-        access_type="offline"
-    )
+    # Write client_secret to a temp file (Flow requires a file)
+    client_secret = os.getenv("client_secret.json")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(client_secret)
+        temp_path = f.name
 
-    # Save only the code_verifier string, not the whole flow object
+    flow = Flow.from_client_secrets_file(
+        temp_path,
+        scopes=SCOPES,
+        redirect_uri=os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
+    )
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+
     with open("code_verifier.txt", "w") as f:
         f.write(flow.code_verifier or "")
 
+    os.unlink(temp_path)
     return RedirectResponse(auth_url)
-
 
 @app.get("/auth/callback")
 def auth_callback(code: str, state: str = None):
+    client_secret = os.getenv("client_secret.json")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(client_secret)
+        temp_path = f.name
+
     flow = Flow.from_client_secrets_file(
-        CLIENT_SECRET_FILE,
+        temp_path,
         scopes=SCOPES,
-        redirect_uri="http://localhost:8000/auth/callback"
+        redirect_uri=os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
     )
 
-    # Load the saved code_verifier
     with open("code_verifier.txt", "r") as f:
         flow.code_verifier = f.read().strip() or None
 
     flow.fetch_token(code=code)
+    os.unlink(temp_path)
 
-    # Save token for future use
-    creds = flow.credentials
-    with open(TOKEN_FILE, "w") as f:
-        f.write(creds.to_json())
-
-    # Clean up temporary file
-    os.remove("code_verifier.txt")
+    if os.path.exists("code_verifier.txt"):
+        os.remove("code_verifier.txt")
 
     return {"mesaj": "Successfully authenticated!"}
 
