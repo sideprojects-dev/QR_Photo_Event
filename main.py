@@ -8,6 +8,7 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 from datetime import datetime
+from supabase import create_client
 import io
 import os
 import uuid
@@ -16,7 +17,7 @@ import tempfile
 
 app = FastAPI()
 
-load_dotenv()  # Load environment variables from .env file
+load_dotenv()  # load environment variables from .env file
 
 CLIENT_SECRET_FILE = "client_secret.json"
 FOLDER_ID = os.getenv("FOLDER_ID")
@@ -120,3 +121,22 @@ async def upload(file: UploadFile = File(...)):
     ).execute()
 
     return {"mesaj": "Saved!"}
+
+def get_supabase():
+    return create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_KEY")
+    )
+
+@app.get("/events/{slug}")
+def event_page(slug: str):
+    # look up event in Supabase
+    supabase = get_supabase()
+    result = supabase.table("events").select("*").eq("slug", slug).execute()
+
+    if not result.data:
+        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+    
+    #serve the upload page
+    with open("static/upload.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())
