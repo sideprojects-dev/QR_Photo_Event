@@ -127,16 +127,15 @@ def get_supabase():
         os.getenv("SUPABASE_URL"),
         os.getenv("SUPABASE_KEY")
     )
-
-@app.get("/events/{slug}")
+    
+@app.get("/event/{slug}")
 def event_page(slug: str):
     # look up event in Supabase
     supabase = get_supabase()
     result = supabase.table("events").select("*").eq("slug", slug).execute()
 
     if not result.data:
-        return HTMLResponse("<h1>Event not found</h1>", status_code=404)
+        return HTMLResponse("<h1>Eveniment negăsit</h1>", status_code=404)
     
-    #serve the upload page
-    with open("static/upload.html", "r", encoding="utf-8") as f:
+    with open("static/index.html", "r", encoding="utf-8") as f:  
         return HTMLResponse(f.read())
