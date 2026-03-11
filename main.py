@@ -102,33 +102,31 @@ def auth_callback(code: str, state: str = None):
 
     return {"mesaj": "Successfully authenticated!"}
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+@app.post("/upload/{slug}")
+async def upload(slug: str, file: UploadFile = File(...)):
     content = await file.read()
+
+    # Get folder_id for this event from Supabase
+    supabase = get_supabase()
+    result = supabase.table("events").select("folder_id").eq("slug", slug).execute()
+    
+    if not result.data:
+        return {"mesaj": "Eveniment negăsit"}
+    
+    event_folder_id = result.data[0]["folder_id"]
 
     # Generate unique filename
     extension = os.path.splitext(file.filename)[1]
     unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{extension}"
 
-    # Upload to Google Drive
+    # Upload to the event's specific folder
     drive = get_drive_service()
-
     file_metadata = {
         "name": unique_name,
-        "parents": [FOLDER_ID]
+        "parents": [event_folder_id]  # event folder, not main folder
     }
-
-    media = MediaIoBaseUpload(
-        io.BytesIO(content),
-        mimetype=file.content_type,
-        resumable=True
-    )
-
-    drive.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id, name"
-    ).execute()
+    media = MediaIoBaseUpload(io.BytesIO(content), mimetype=file.content_type, resumable=True)
+    drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
 
     return {"mesaj": "Saved!"}
 
@@ -140,15 +138,18 @@ def get_supabase():
     
 @app.get("/event/{slug}")
 def event_page(slug: str):
-    # look up event in Supabase
     supabase = get_supabase()
     result = supabase.table("events").select("*").eq("slug", slug).execute()
 
     if not result.data:
         return HTMLResponse("<h1>Eveniment negăsit</h1>", status_code=404)
     
-    with open("static/index.html", "r", encoding="utf-8") as f:  
-        return HTMLResponse(f.read())
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    # Inject slug into page so JavaScript knows where to upload
+    html = html.replace("</body>", f'<script>window.EVENT_SLUG = "{slug}";</script></body>')
+    return HTMLResponse(html)
     
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD","admin123")
 
@@ -169,10 +170,12 @@ async def api_create_event(
     # create folder in Google Drive
     drive = get_drive_service()
     folder = drive.files().create(
-        body={
-            "name": slug,
-            "mimeType": "application/vnd.google-apps.folder"},
-        fields="id"
+    body={
+        "name": event_name, 
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [os.getenv("FOLDER_ID")]  # creates inside your main folder
+    },
+    fields="id"
     ).execute()
     folder_id = folder["id"]
 

@@ -95,7 +95,7 @@ async function sendFile() {
     formData.append('file', capturedFile)
 
     try {
-        const response = await fetch('/upload', {
+        const response = await fetch(`/upload/${window.EVENT_SLUG || 'default'}`, {
             method: 'POST',
             body: formData
         })
