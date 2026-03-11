@@ -32,18 +32,23 @@ TOKEN_FILE = "token.json"
 def get_drive_service():
     creds = None
 
-    # Read token from environment variable instead of file
     token_json = os.getenv("token.json")
+    print(f"token_json exists: {bool(token_json)}")
+
     if token_json:
         creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
+        print(f"creds valid: {creds.valid}, expired: {creds.expired}")
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
+            print("Refreshing token...")
             creds.refresh(Request())
         else:
-            raise Exception("Not authenticated. Visit /auth/login")
-
-    return build("drive", "v3", credentials=creds)
+            raise Exception("No valid credentials available. Please authenticate at /auth/login")
+        
+    service = build("drive", "v3", credentials=creds)
+    print(f"Drive service type: {type(service)}")
+    return service
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
