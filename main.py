@@ -153,7 +153,7 @@ def event_page(slug: str):
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD","admin123")
 
 @app.post("/api/create-event")
-async def create_event(
+async def api_create_event(
     event_name: str,
     x_admin_password: str = Header(None)
 ):
