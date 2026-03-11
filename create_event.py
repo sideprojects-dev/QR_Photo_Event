@@ -37,6 +37,7 @@ def create_event(event_name: str):
         "name": event_name,
         "mimeType": "application/vnd.google-apps.folder"
     }
+    print(f"FOLDER_ID: {os.getenv('FOLDER_ID')}")
     folder = drive.files().create(
         body=folder_metadata,
         fields="id, name"
