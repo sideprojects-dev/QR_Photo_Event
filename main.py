@@ -167,7 +167,7 @@ async def api_create_event(
     slug = ''.join(c for c in slug if c.isalnum() or c == '-')
 
     # create folder in Google Drive
-    drive = get_drive_service
+    drive = get_drive_service()
     folder = drive.files().create(
         body={
             "name": slug,
