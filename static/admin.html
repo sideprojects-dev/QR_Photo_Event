@@ -18,7 +18,7 @@
     #message { padding: 12px; border-radius: 4px; margin-top: 12px; display: none; }
     .success { background: #d4edda; color: #155724; }
     .error { background: #f8d7da; color: #721c24; }
-    #loginSection { }
+    #loginSection { display: block; }
     #adminSection { display: none; }
   </style>
 </head>
@@ -40,7 +40,7 @@
     <div class="card">
       <h2>➕ Eveniment nou</h2>
       <input type="text" id="eventName" placeholder="ex: Nunta Ana & Mihai">
-      <button id="createBtn" onclick="createEvent()">Creează eveniment + QR</button>
+      <button id="createBtn" onclick="createNewEvent()">Creează eveniment + QR</button>
       <div id="message"></div>
     </div>
 
@@ -106,7 +106,7 @@
     `).join('')
   }
 
-  async function createEvent() {
+  async function createNewEvent() {
     const name = document.getElementById('eventName').value.trim()
     if (!name) return
 
