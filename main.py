@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Header
+from fastapi.responses import StreamingResponse
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.credentials import Credentials
@@ -10,10 +12,13 @@ from dotenv import load_dotenv
 from datetime import datetime
 from supabase import create_client
 import io
+import io as io_module
 import os
 import uuid
 import json
 import tempfile
+import qrcode
+
 
 app = FastAPI()
 
@@ -139,3 +144,45 @@ def event_page(slug: str):
     
     with open("static/index.html", "r", encoding="utf-8") as f:  
         return HTMLResponse(f.read())
+    
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD","admin123")
+
+@app.post("/api/create-event")
+async def create_event(
+    event_name: str,
+    x_admin_password: str = Header(None)
+):
+    # check admin password
+    if x_admin_password != ADMIN_PASSWORD:
+        return {"error": "Unauthorized"}, 401
+    
+    # generate slug
+    slug = event_name.lower()
+    slug = slug.replace(" & ", " - ").replace(" ", " ")
+    slug = ''.join(c for c in slug if c.isalnum() or c == '-')
+
+    # create folder in Google Drive
+    drive = get_drive_service
+    folder = drive.files().create(
+        body={
+            "name": slug,
+            "mimeType": "application/vnd.google-apps.folder"},
+        fields="id"
+    ).execute()
+    folder_id = folder["id"]
+
+    # save event to Supabase
+    supabase = get_supabase()
+    supabase.table("events").insert({
+        "slug": slug,
+        "name": event_name,
+        "folder_id": folder_id,
+        "created_at": datetime.now().isoformat()
+    }).execute()
+
+    return {
+        "success": True,
+        "slug": slug,
+        "url": f"https://qr-photo-event.onrender.com/event/{slug}",
+        "folder_id": folder_id
+    }

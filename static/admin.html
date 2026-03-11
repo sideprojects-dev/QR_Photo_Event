@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
+    h1 { color: #333; }
+    .card { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; background: #2d6a4f; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+    button:hover { background: #1b4332; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    .event-card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 12px; }
+    .event-url { color: #2d6a4f; font-size: 14px; word-break: break-all; }
+    .qr-btn { width: auto; padding: 8px 16px; font-size: 14px; margin-top: 8px; }
+    #message { padding: 12px; border-radius: 4px; margin-top: 12px; display: none; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    #loginSection { }
+    #adminSection { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Login -->
+  <div id="loginSection">
+    <div class="card">
+      <h1>🔐 Admin</h1>
+      <input type="password" id="password" placeholder="Parola admin">
+      <button onclick="login()">Intră</button>
+      <div id="loginError" style="color:red; margin-top:8px; display:none">Parolă greșită</div>
+    </div>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="adminSection">
+    <!-- Create event -->
+    <div class="card">
+      <h2>➕ Eveniment nou</h2>
+      <input type="text" id="eventName" placeholder="ex: Nunta Ana & Mihai">
+      <button id="createBtn" onclick="createEvent()">Creează eveniment + QR</button>
+      <div id="message"></div>
+    </div>
+
+    <!-- Events list -->
+    <div class="card">
+      <h2>📋 Evenimente</h2>
+      <div id="eventsList">Se încarcă...</div>
+    </div>
+  </div>
+
+<script>
+  let adminPassword = ''
+
+  function login() {
+    const pwd = document.getElementById('password').value
+    if (!pwd) return
+
+    adminPassword = pwd
+    // Try to load events to verify password
+    loadEvents()
+  }
+
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login()
+  })
+
+  async function loadEvents() {
+    try {
+      const response = await fetch('/api/events', {
+        headers: { 'x-admin-password': adminPassword }
+      })
+
+      if (response.status === 401) {
+        document.getElementById('loginError').style.display = 'block'
+        adminPassword = ''
+        return
+      }
+
+      // Password correct - show admin panel
+      document.getElementById('loginSection').style.display = 'none'
+      document.getElementById('adminSection').style.display = 'block'
+
+      const data = await response.json()
+      renderEvents(data.events)
+
+    } catch (err) {
+      alert('Eroare: ' + err.message)
+    }
+  }
+
+  function renderEvents(events) {
+    const container = document.getElementById('eventsList')
+    if (!events.length) {
+      container.innerHTML = '<p style="color:#888">Nu există evenimente încă.</p>'
+      return
+    }
+    container.innerHTML = events.map(e => `
+      <div class="event-card">
+        <strong>${e.name}</strong><br>
+        <span class="event-url">https://qr-photo-event.onrender.com/event/${e.slug}</span><br>
+        <button class="qr-btn" onclick="downloadQR('${e.slug}', '${e.name}')">⬇️ Descarcă QR</button>
+      </div>
+    `).join('')
+  }
+
+  async function createEvent() {
+    const name = document.getElementById('eventName').value.trim()
+    if (!name) return
+
+    const btn = document.getElementById('createBtn')
+    const msg = document.getElementById('message')
+    btn.disabled = true
+    btn.textContent = 'Se creează...'
+
+    try {
+      const response = await fetch(`/api/create-event?event_name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'x-admin-password': adminPassword }
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        msg.className = 'success'
+        msg.style.display = 'block'
+        msg.textContent = `✅ Creat! URL: ${data.url}`
+        document.getElementById('eventName').value = ''
+        loadEvents()
+        // Auto download QR
+        downloadQR(data.slug, name)
+      } else {
+        msg.className = 'error'
+        msg.style.display = 'block'
+        msg.textContent = 'Eroare: ' + (data.error || 'necunoscută')
+      }
+    } catch (err) {
+      msg.className = 'error'
+      msg.style.display = 'block'
+      msg.textContent = 'Eroare: ' + err.message
+    }
+
+    btn.disabled = false
+    btn.textContent = 'Creează eveniment + QR'
+  }
+
+  function downloadQR(slug, name) {
+    // Open QR download endpoint
+    window.open(`/api/qr/${slug}`, '_blank')
+  }
+</script>
+</body>
+</html>
