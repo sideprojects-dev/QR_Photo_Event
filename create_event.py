@@ -35,7 +35,8 @@ def create_event(event_name: str):
     drive = get_drive_service()
     folder_metadata = {
         "name": event_name,
-        "mimeType": "application/vnd.google-apps.folder"
+        "mimeType": "application/vnd.google-apps.folder",
+        "parents": [os.getenv("FOLDER_ID")]
     }
     print(f"FOLDER_ID: {os.getenv('FOLDER_ID')}")
     folder = drive.files().create(

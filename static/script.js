@@ -12,9 +12,14 @@ async function startCamera() {
     // Stop existing stream if any
     if (stream) stream.getTracks().forEach(t => t.stop())
 
+    //modificare rezolutie
     try {
         stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode },
+             video: {
+                facingMode: { ideal: facingMode },
+                width: { ideal: 3840 },
+                height: { ideal: 2160 }
+            },
             audio: true
         })
         document.getElementById('viewfinder').srcObject = stream
@@ -46,22 +51,57 @@ function takePhoto() {
         preview.style.display = 'block'
         document.getElementById('previewVideo').style.display = 'none'
         document.getElementById('btnSend').style.display = 'inline-block'
-    }, 'image/jpeg', 0.9)
+    }, 'image/jpeg', 0.95)
 }
 
-function toggleVideo() {
+//incarcam mp4, iar daca telefonul/browser ul nu il suporta, folosim WebM
+function getSupportedVideoMimeType() {
+    const types = [
+        'video/mp4;codecs=h264,aac',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+    ]
+
+    return types.find(type => MediaRecorder.isTypeSupported(type)) || ''
+}
+
+async function toggleVideo() {
     if (!isRecording) {
+        const videoTrack = stream.getVideoTracks()[0]
+
+        await videoTrack.applyConstraints({
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+        })
+
         // Start recording
         recordedChunks = []
-        mediaRecorder = new MediaRecorder(stream)
+
+        const mimeType = getSupportedVideoMimeType()
+
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 
         mediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) recordedChunks.push(e.data)
         }
 
         mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: 'video/mp4' })
-            capturedFile = new File([blob], 'video.mp4', { type: 'video/mp4' })
+            const recorderMimeType = mediaRecorder.mimeType || recordedChunks[0]?.type || 'video/webm'
+
+            const fileMimeType = recorderMimeType.split(';')[0]
+
+            const extension = fileMimeType === 'video/mp4' ? 'mp4' : 'webm'
+
+            const blob = new Blob(recordedChunks, { type: fileMimeType })
+
+            capturedFile = new File(
+                [blob],
+                `video.${extension}`,
+                { type: fileMimeType }
+            )
 
             // Show video preview
             const previewVideo = document.getElementById('previewVideo')

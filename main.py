@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Header
@@ -95,6 +95,12 @@ def auth_callback(code: str, state: str = None):
         flow.code_verifier = f.read().strip() or None
 
     flow.fetch_token(code=code)
+
+    new_token_json = flow.credentials.to_json()
+
+    with open("token.json", "w", encoding="utf-8") as token_file:   
+        token_file.write(new_token_json)
+
     os.unlink(temp_path)
 
     if os.path.exists("code_verifier.txt"):
@@ -104,7 +110,11 @@ def auth_callback(code: str, state: str = None):
 
 @app.post("/upload/{slug}")
 async def upload(slug: str, file: UploadFile = File(...)):
-    content = await file.read()
+    if not file.content_type or not file.content_type.startswith(("image/", "video/")):
+        raise HTTPException(
+            status_code=400,
+            detail="Only image and video files are allowed."
+        )
 
     # Get folder_id for this event from Supabase
     supabase = get_supabase()
@@ -125,8 +135,15 @@ async def upload(slug: str, file: UploadFile = File(...)):
         "name": unique_name,
         "parents": [event_folder_id]  # event folder, not main folder
     }
-    media = MediaIoBaseUpload(io.BytesIO(content), mimetype=file.content_type, resumable=True)
-    drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+    # upload pe bucati
+    await file.seek(0)
+    media = MediaIoBaseUpload(file.file, mimetype=file.content_type, chunksize=8 * 1024 * 1024, resumable=True)
+    request = drive.files().create(body=file_metadata, media_body=media, fields="id")
+    response = None
+
+    while response is None:
+        _, response = request.next_chunk()
 
     return {"mesaj": "Saved!"}
 
@@ -164,8 +181,25 @@ async def api_create_event(
     
     # generate slug
     slug = event_name.lower()
-    slug = slug.replace(" & ", " - ").replace(" ", " ")
+    slug = slug.replace(" & ", "-").replace(" ", "-")
     slug = ''.join(c for c in slug if c.isalnum() or c == '-')
+
+    # check duplicate
+    supabase = get_supabase()
+
+    existing_event = (
+        supabase
+        .table("events")
+        .select("slug")
+        .eq("slug", slug)
+        .execute()
+    )
+
+    if existing_event.data:
+        return {
+            "success": False,
+            "error": "Există deja un eveniment cu acest nume."
+        }
 
     # create folder in Google Drive
     drive = get_drive_service()
