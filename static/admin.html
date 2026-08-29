@@ -36,6 +36,13 @@
 
   <!-- Admin Panel -->
   <div id="adminSection">
+    <!-- Master QR -->
+    <div class="card">
+      <h2>📌 QR Master</h2>
+      <p style="color:#666; font-size:14px;">Acest QR se printă o singură dată și redirecționează mereu către evenimentul marcat ca <strong>activ</strong> mai jos.</p>
+      <button class="qr-btn" style="width:100%;" onclick="downloadQR('master', 'master')">⬇️ Descarcă QR Master</button>
+    </div>
+
     <!-- Create event -->
     <div class="card">
       <h2>➕ Eveniment nou</h2>
@@ -99,9 +106,12 @@
     }
     container.innerHTML = events.map(e => `
       <div class="event-card">
-        <strong>${e.name}</strong><br>
+        <strong>${e.name}</strong>
+        ${e.status === 'active' ? '<span style="color:#2d6a4f; font-size:12px;"> ● ACTIV</span>' : '<span style="color:#999; font-size:12px;"> ○ arhivat</span>'}
+        <br>
         <span class="event-url">https://qr-photo-event.onrender.com/event/${e.slug}</span><br>
         <button class="qr-btn" onclick="downloadQR('${e.slug}', '${e.name}')">⬇️ Descarcă QR</button>
+        ${e.status !== 'active' ? `<button class="qr-btn" onclick="activateEvent('${e.slug}')">✅ Activează</button>` : ''}
       </div>
     `).join('')
   }
@@ -149,6 +159,23 @@
   function downloadQR(slug, name) {
     // Open QR download endpoint
     window.open(`/api/qr/${slug}`, '_blank')
+  }
+
+  async function activateEvent(slug) {
+    try {
+      const response = await fetch(`/api/events/${slug}/activate`, {
+        method: 'POST',
+        headers: { 'x-admin-password': adminPassword }
+      })
+      const data = await response.json()
+      if (data.success) {
+        loadEvents()
+      } else {
+        alert('Eroare la activare: ' + (data.detail || 'necunoscută'))
+      }
+    } catch (err) {
+      alert('Eroare: ' + err.message)
+    }
   }
 </script>
 </body>

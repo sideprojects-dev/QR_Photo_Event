@@ -152,7 +152,28 @@ def get_supabase():
         os.getenv("SUPABASE_URL"),
         os.getenv("SUPABASE_KEY")
     )
-    
+
+@app.get("/event/master")
+def master_redirect():
+    # QR-ul master este printat o singură dată și redirecționează
+    # mereu către evenimentul curent marcat drept "active" în Supabase.
+    supabase = get_supabase()
+    result = (
+        supabase
+        .table("events")
+        .select("slug")
+        .eq("status", "active")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        return HTMLResponse("<h1>Niciun eveniment activ momentan</h1>", status_code=404)
+
+    active_slug = result.data[0]["slug"]
+    return RedirectResponse(f"/event/{active_slug}")
+
 @app.get("/event/{slug}")
 def event_page(slug: str):
     supabase = get_supabase()
@@ -213,13 +234,17 @@ async def api_create_event(
     ).execute()
     folder_id = folder["id"]
 
+    # Arhivăm orice eveniment activ anterior, ca să existe mereu
+    # un singur eveniment activ (cel spre care redirecționează QR-ul master).
+    supabase.table("events").update({"status": "archived"}).eq("status", "active").execute()
+
     # save event to Supabase
-    supabase = get_supabase()
     supabase.table("events").insert({
         "slug": slug,
         "name": event_name,
         "folder_id": folder_id,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "status": "active"
     }).execute()
 
     return {
@@ -228,6 +253,22 @@ async def api_create_event(
         "url": f"https://qr-photo-event.onrender.com/event/{slug}",
         "folder_id": folder_id
     }
+
+@app.post("/api/events/{slug}/activate")
+def activate_event(slug: str, x_admin_password: str = Header(None)):
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    supabase = get_supabase()
+
+    existing = supabase.table("events").select("slug").eq("slug", slug).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Eveniment negăsit")
+
+    supabase.table("events").update({"status": "archived"}).eq("status", "active").execute()
+    supabase.table("events").update({"status": "active"}).eq("slug", slug).execute()
+
+    return {"success": True, "slug": slug}
 
 @app.get("/admin")
 def admin_panel():
