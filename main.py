@@ -148,9 +148,15 @@ async def upload(slug: str, file: UploadFile = File(...)):
     return {"mesaj": "Saved!"}
 
 def get_supabase():
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    public_key = os.getenv("SUPABASE_KEY")
+
+    if not service_key:
+        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is missing from environment")
+
     return create_client(
         os.getenv("SUPABASE_URL"),
-        os.getenv("SUPABASE_KEY")
+        service_key
     )
 
 @app.get("/event/master")
@@ -185,10 +191,8 @@ def event_page(slug: str):
     with open("static/index.html", "r", encoding="utf-8") as f:
         html = f.read()
 
-    # Cache-busting: unele telefoane deschid linkul scanat din QR
-    # într-un browser încorporat (in-app browser) care ține în cache
-    # agresiv fișierele statice. Fără asta, un telefon poate rula
-    # o versiune veche de script.js chiar dacă am urcat una nouă.
+    
+    # Fortarează browserul să ia mereu ultima versiune a scriptului prin adăugarea unui query param cu timestamp.
     script_version = int(os.path.getmtime("static/script.js"))
     html = html.replace(
         '<script src="/static/script.js"></script>',
@@ -201,67 +205,218 @@ def event_page(slug: str):
     
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD","admin123")
 
+@app.post("/api/locations")
+async def create_location(
+    location_name: str,
+    x_admin_password: str = Header(None)
+):
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    location_name = location_name.strip()
+
+    if not location_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Location name is required."
+        )
+
+    slug = location_name.lower()
+    slug = slug.replace(" & ", "-").replace(" ", "-")
+    slug = ''.join(c for c in slug if c.isalnum() or c == '-')
+
+    supabase = get_supabase()
+
+    existing_location = (
+        supabase
+        .table("locations")
+        .select("id")
+        .eq("slug", slug)
+        .execute()
+    )
+
+    if existing_location.data:
+        raise HTTPException(
+            status_code=409,
+            detail="Există deja o locație cu acest nume."
+        )
+
+    drive = get_drive_service()
+
+    folder = drive.files().create(
+        body={
+            "name": location_name,
+            "mimeType": "application/vnd.google-apps.folder",
+            "parents": [FOLDER_ID]
+        },
+        fields="id"
+    ).execute()
+
+    folder_id = folder["id"]
+
+    result = (
+        supabase
+        .table("locations")
+        .insert({
+            "name": location_name,
+            "slug": slug,
+            "folder_id": folder_id
+        })
+        .execute()
+    )
+
+    return {
+        "success": True,
+        "location": result.data[0] if result.data else {
+            "name": location_name,
+            "slug": slug,
+            "folder_id": folder_id
+        }
+    }
+
+@app.get("/api/locations")
+def get_locations(x_admin_password: str = Header(None)):
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    supabase = get_supabase()
+
+    result = (
+        supabase
+        .table("locations")
+        .select("*")
+        .order("created_at", desc=False)
+        .execute()
+    )
+
+    return {
+        "locations": result.data
+    }
+
 @app.post("/api/create-event")
 async def api_create_event(
     event_name: str,
+    location_slug: str,
     x_admin_password: str = Header(None)
 ):
-    # check admin password
     if x_admin_password != ADMIN_PASSWORD:
-        return {"error": "Unauthorized"}, 401
-    
-    # generate slug
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    event_name = event_name.strip()
+    location_slug = location_slug.strip()
+
+    if not event_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Event name is required."
+        )
+
+    supabase = get_supabase()
+
+    # Get the selected location
+    location_result = (
+        supabase
+        .table("locations")
+        .select("id, name, folder_id")
+        .eq("slug", location_slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not location_result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Locația nu a fost găsită."
+        )
+
+    location = location_result.data[0]
+    location_id = location["id"]
+    location_folder_id = location["folder_id"]
+
+    if not location_folder_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Locația nu are folder Google Drive asociat."
+        )
+
+    # Generate event slug
     slug = event_name.lower()
     slug = slug.replace(" & ", "-").replace(" ", "-")
     slug = ''.join(c for c in slug if c.isalnum() or c == '-')
 
-    # check duplicate
-    supabase = get_supabase()
-
+    # Check duplicate event slug
     existing_event = (
         supabase
         .table("events")
-        .select("slug")
+        .select("id")
         .eq("slug", slug)
         .execute()
     )
 
     if existing_event.data:
-        return {
-            "success": False,
-            "error": "Există deja un eveniment cu acest nume."
-        }
+        raise HTTPException(
+            status_code=409,
+            detail="Există deja un eveniment cu acest nume."
+        )
 
-    # create folder in Google Drive
     drive = get_drive_service()
-    folder = drive.files().create(
-    body={
-        "name": event_name, 
-        "mimeType": "application/vnd.google-apps.folder",
-        "parents": [os.getenv("FOLDER_ID")]  # creates inside your main folder
-    },
-    fields="id"
-    ).execute()
-    folder_id = folder["id"]
 
-    # Arhivăm orice eveniment activ anterior, ca să existe mereu
-    # un singur eveniment activ (cel spre care redirecționează QR-ul master).
-    supabase.table("events").update({"status": "archived"}).eq("status", "active").execute()
+    folder_id = None
 
-    # save event to Supabase
-    supabase.table("events").insert({
-        "slug": slug,
-        "name": event_name,
-        "folder_id": folder_id,
-        "created_at": datetime.now().isoformat(),
-        "status": "active"
-    }).execute()
+    try:
+        # Create event folder inside the location folder
+        folder = drive.files().create(
+            body={
+                "name": event_name,
+                "mimeType": "application/vnd.google-apps.folder",
+                "parents": [location_folder_id]
+            },
+            fields="id"
+        ).execute()
+
+        folder_id = folder["id"]
+
+        # Archive only the active event from this location
+        (
+            supabase
+            .table("events")
+            .update({"status": "archived"})
+            .eq("location_id", location_id)
+            .eq("status", "active")
+            .execute()
+        )
+
+        # Save the new event
+        result = (
+            supabase
+            .table("events")
+            .insert({
+                "slug": slug,
+                "name": event_name,
+                "folder_id": folder_id,
+                "created_at": datetime.now().isoformat(),
+                "status": "active",
+                "location_id": location_id
+            })
+            .execute()
+        )
+
+    except Exception:
+        # Avoid leaving an orphan folder if Supabase insert fails
+        if folder_id:
+            try:
+                drive.files().delete(fileId=folder_id).execute()
+            except Exception:
+                pass
+
+        raise
 
     return {
         "success": True,
         "slug": slug,
         "url": f"https://qr-photo-event.onrender.com/event/{slug}",
-        "folder_id": folder_id
+        "folder_id": folder_id,
+        "location_id": location_id
     }
 
 @app.post("/api/events/{slug}/activate")

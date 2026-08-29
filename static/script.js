@@ -13,17 +13,12 @@ async function startCamera() {
     if (stream) stream.getTracks().forEach(t => t.stop())
 
     //modificare rezolutie
-    // 1080p, nu 4K: la 4K, encoder-ul hardware de pe telefoane mai slabe
-    // se poate bloca după câteva secunde de înregistrare (video îngheață,
-    // audio continuă). 1080p e suficient pentru fotografii/video de eveniment
-    // și e suportat stabil de imensa majoritate a telefoanelor.
     try {
         stream = await navigator.mediaDevices.getUserMedia({
              video: {
                 facingMode: { ideal: facingMode },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30, max: 30 }
+                width: { ideal: 3840 },
+                height: { ideal: 2160 }
             },
             audio: true
         })
@@ -79,8 +74,8 @@ async function toggleVideo() {
 
         const mimeType = getSupportedVideoMimeType()
 
-        // Bitrate explicit: fără el, browserul alege un implicit prea mic
-        // pe multe telefoane, ceea ce dădea o calitate vizibil sub 1080p.
+        // Bitrate explicit: fara el, browserul alege un implicit prea mic
+        // pe multe telefoane, ceea ce dadea o calitate vizibil sub 1080pgit
         const recorderOptions = {
             videoBitsPerSecond: 8000000,
             audioBitsPerSecond: 128000
@@ -91,14 +86,6 @@ async function toggleVideo() {
 
         mediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) recordedChunks.push(e.data)
-        }
-
-        // Dacă encoder-ul intern eșuează, browserul emite un eveniment
-        // 'error' — înainte nu era tratat deloc, iar recorder-ul
-        // "îngheța" silențios, fără niciun mesaj către utilizator.
-        mediaRecorder.onerror = (event) => {
-            document.getElementById('message').textContent =
-                'Eroare la înregistrare: ' + (event.error?.message || 'eroare necunoscută') + '. Încearcă din nou.'
         }
 
         mediaRecorder.onstop = () => {
@@ -124,9 +111,7 @@ async function toggleVideo() {
             document.getElementById('btnSend').style.display = 'inline-block'
         }
 
-        // timeslice de 1000ms: primim chunk-uri periodice în loc de unul
-        // singur la stop, ca să nu pierdem tot clipul dacă ceva eșuează
-        mediaRecorder.start(1000)
+        mediaRecorder.start()
         isRecording = true
         document.getElementById('btnRecord').textContent = '⏹ Stop'
         document.getElementById('btnRecord').style.background = '#ff6600'

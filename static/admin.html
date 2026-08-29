@@ -4,179 +4,335 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Panel</title>
+
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
-    h1 { color: #333; }
-    .card { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
-    button { width: 100%; padding: 12px; background: #2d6a4f; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-    button:hover { background: #1b4332; }
-    button:disabled { background: #aaa; cursor: not-allowed; }
-    .event-card { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 12px; }
-    .event-url { color: #2d6a4f; font-size: 14px; word-break: break-all; }
-    .qr-btn { width: auto; padding: 8px 16px; font-size: 14px; margin-top: 8px; }
-    #message { padding: 12px; border-radius: 4px; margin-top: 12px; display: none; }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
-    #loginSection { display: block; }
-    #adminSection { display: none; }
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    h1,
+    h2 {
+      color: #333;
+    }
+
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #2d6a4f;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1b4332;
+    }
+
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    .event-card {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 12px;
+    }
+
+    .event-url {
+      color: #2d6a4f;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .qr-btn {
+      width: auto;
+      padding: 8px 16px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .back-btn {
+      width: auto;
+      margin-bottom: 20px;
+      padding: 8px 16px;
+      background: #555;
+    }
+
+    .back-btn:hover {
+      background: #333;
+    }
+
+    .message {
+      display: none;
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 4px;
+    }
+
+    .success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    #loginSection {
+      display: block;
+    }
+
+    #adminSection {
+      display: none;
+    }
+
+    #locationDashboard {
+      display: none;
+    }
   </style>
 </head>
-<body>
 
+<body>
   <!-- Login -->
   <div id="loginSection">
     <div class="card">
       <h1>🔐 Admin</h1>
-      <input type="password" id="password" placeholder="Parola admin">
+
+      <input
+        type="password"
+        id="password"
+        placeholder="Parola admin"
+      >
+
       <button onclick="login()">Intră</button>
-      <div id="loginError" style="color:red; margin-top:8px; display:none">Parolă greșită</div>
+
+      <div
+        id="loginError"
+        style="color: red; margin-top: 8px; display: none;"
+      >
+        Parolă greșită
+      </div>
     </div>
   </div>
 
   <!-- Admin Panel -->
   <div id="adminSection">
-    <!-- Master QR -->
-    <div class="card">
-      <h2>📌 QR Master</h2>
-      <p style="color:#666; font-size:14px;">Acest QR se printă o singură dată și redirecționează mereu către evenimentul marcat ca <strong>activ</strong> mai jos.</p>
-      <button class="qr-btn" style="width:100%;" onclick="downloadQR('master', 'master')">⬇️ Descarcă QR Master</button>
+    <!-- Locations dashboard -->
+    <div id="locationsDashboard">
+      <div class="card">
+        <h2>➕ Locație nouă</h2>
+
+        <input
+          type="text"
+          id="locationName"
+          placeholder="ex: Restaurant Bellaria"
+        >
+
+        <button
+          id="createLocationBtn"
+          onclick="createLocation()"
+        >
+          Creează locație
+        </button>
+
+        <div
+          id="locationMessage"
+          class="message"
+        ></div>
+      </div>
+
+      <div class="card">
+        <h2>📍 Locații</h2>
+        <div id="locationsList">Se încarcă...</div>
+      </div>
     </div>
 
-    <!-- Create event -->
-    <div class="card">
-      <h2>➕ Eveniment nou</h2>
-      <input type="text" id="eventName" placeholder="ex: Nunta Ana & Mihai">
-      <button id="createBtn" onclick="createNewEvent()">Creează eveniment + QR</button>
-      <div id="message"></div>
-    </div>
+    <!-- Selected location dashboard -->
+    <div id="locationDashboard">
+      <button
+        class="back-btn"
+        onclick="backToLocations()"
+      >
+        ← Înapoi la locații
+      </button>
 
-    <!-- Events list -->
-    <div class="card">
-      <h2>📋 Evenimente</h2>
-      <div id="eventsList">Se încarcă...</div>
+      <div class="card">
+        <h2 id="selectedLocationName"></h2>
+        <p
+          id="selectedLocationSlug"
+          class="event-url"
+        ></p>
+      </div>
     </div>
   </div>
 
-<script>
-  let adminPassword = ''
+  <script>
+    let adminPassword = ''
+    let selectedLocationSlug = null
 
-  function login() {
-    const pwd = document.getElementById('password').value
-    if (!pwd) return
+    function login() {
+      const pwd = document.getElementById('password').value
 
-    adminPassword = pwd
-    // Try to load events to verify password
-    loadEvents()
-  }
-
-  document.getElementById('password').addEventListener('keydown', e => {
-    if (e.key === 'Enter') login()
-  })
-
-  async function loadEvents() {
-    try {
-      const response = await fetch('/api/events', {
-        headers: { 'x-admin-password': adminPassword }
-      })
-
-      if (response.status === 401) {
-        document.getElementById('loginError').style.display = 'block'
-        adminPassword = ''
+      if (!pwd) {
         return
       }
 
-      // Password correct - show admin panel
-      document.getElementById('loginSection').style.display = 'none'
-      document.getElementById('adminSection').style.display = 'block'
-
-      const data = await response.json()
-      renderEvents(data.events)
-
-    } catch (err) {
-      alert('Eroare: ' + err.message)
+      adminPassword = pwd
+      loadLocations()
     }
-  }
 
-  function renderEvents(events) {
-    const container = document.getElementById('eventsList')
-    if (!events.length) {
-      container.innerHTML = '<p style="color:#888">Nu există evenimente încă.</p>'
-      return
-    }
-    container.innerHTML = events.map(e => `
-      <div class="event-card">
-        <strong>${e.name}</strong>
-        ${e.status === 'active' ? '<span style="color:#2d6a4f; font-size:12px;"> ● ACTIV</span>' : '<span style="color:#999; font-size:12px;"> ○ arhivat</span>'}
-        <br>
-        <span class="event-url">https://qr-photo-event.onrender.com/event/${e.slug}</span><br>
-        <button class="qr-btn" onclick="downloadQR('${e.slug}', '${e.name}')">⬇️ Descarcă QR</button>
-        ${e.status !== 'active' ? `<button class="qr-btn" onclick="activateEvent('${e.slug}')">✅ Activează</button>` : ''}
-      </div>
-    `).join('')
-  }
-
-  async function createNewEvent() {
-    const name = document.getElementById('eventName').value.trim()
-    if (!name) return
-
-    const btn = document.getElementById('createBtn')
-    const msg = document.getElementById('message')
-    btn.disabled = true
-    btn.textContent = 'Se creează...'
-
-    try {
-      const response = await fetch(`/api/create-event?event_name=${encodeURIComponent(name)}`, {
-        method: 'POST',
-        headers: { 'x-admin-password': adminPassword }
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        msg.className = 'success'
-        msg.style.display = 'block'
-        msg.textContent = `✅ Creat! URL: ${data.url}`
-        document.getElementById('eventName').value = ''
-        loadEvents()
-        // Auto download QR
-        downloadQR(data.slug, name)
-      } else {
-        msg.className = 'error'
-        msg.style.display = 'block'
-        msg.textContent = 'Eroare: ' + (data.error || 'necunoscută')
+    document.getElementById('password').addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        login()
       }
-    } catch (err) {
-      msg.className = 'error'
-      msg.style.display = 'block'
-      msg.textContent = 'Eroare: ' + err.message
-    }
+    })
 
-    btn.disabled = false
-    btn.textContent = 'Creează eveniment + QR'
-  }
+    async function loadLocations() {
+      try {
+        const response = await fetch('/api/locations', {
+          headers: {
+            'x-admin-password': adminPassword
+          }
+        })
 
-  function downloadQR(slug, name) {
-    // Open QR download endpoint
-    window.open(`/api/qr/${slug}`, '_blank')
-  }
+        if (response.status === 401) {
+          document.getElementById('loginError').style.display = 'block'
+          adminPassword = ''
+          return
+        }
 
-  async function activateEvent(slug) {
-    try {
-      const response = await fetch(`/api/events/${slug}/activate`, {
-        method: 'POST',
-        headers: { 'x-admin-password': adminPassword }
-      })
-      const data = await response.json()
-      if (data.success) {
-        loadEvents()
-      } else {
-        alert('Eroare la activare: ' + (data.detail || 'necunoscută'))
+        if (!response.ok) {
+          throw new Error('Nu s-au putut încărca locațiile.')
+        }
+
+        document.getElementById('loginError').style.display = 'none'
+        document.getElementById('loginSection').style.display = 'none'
+        document.getElementById('adminSection').style.display = 'block'
+
+        const data = await response.json()
+        renderLocations(data.locations)
+      } catch (err) {
+        alert('Eroare: ' + err.message)
       }
-    } catch (err) {
-      alert('Eroare: ' + err.message)
     }
-  }
-</script>
+
+    function renderLocations(locations) {
+      const container = document.getElementById('locationsList')
+
+      if (!locations.length) {
+        container.innerHTML = '<p style="color: #888;">Nu există locații încă.</p>'
+        return
+      }
+
+      container.innerHTML = locations.map(location => `
+        <div class="event-card">
+          <strong>${location.name}</strong>
+          <br>
+
+          <span class="event-url">${location.slug}</span>
+          <br>
+
+          <button
+            class="qr-btn"
+            onclick="openLocation('${location.slug}', '${location.name}')"
+          >
+            Gestionează
+          </button>
+        </div>
+      `).join('')
+    }
+
+    function openLocation(slug, name) {
+      selectedLocationSlug = slug
+
+      document.getElementById('locationsDashboard').style.display = 'none'
+      document.getElementById('locationDashboard').style.display = 'block'
+
+      document.getElementById('selectedLocationName').textContent = name
+      document.getElementById('selectedLocationSlug').textContent = slug
+    }
+
+    function backToLocations() {
+      selectedLocationSlug = null
+
+      document.getElementById('locationDashboard').style.display = 'none'
+      document.getElementById('locationsDashboard').style.display = 'block'
+    }
+
+    async function createLocation() {
+      const name = document.getElementById('locationName').value.trim()
+
+      if (!name) {
+        return
+      }
+
+      const button = document.getElementById('createLocationBtn')
+      const message = document.getElementById('locationMessage')
+
+      button.disabled = true
+      button.textContent = 'Se creează...'
+
+      try {
+        const response = await fetch(
+          `/api/locations?location_name=${encodeURIComponent(name)}`,
+          {
+            method: 'POST',
+            headers: {
+              'x-admin-password': adminPassword
+            }
+          }
+        )
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'Nu s-a putut crea locația.')
+        }
+
+        message.className = 'message success'
+        message.style.display = 'block'
+        message.textContent = '✅ Locația a fost creată.'
+
+        document.getElementById('locationName').value = ''
+
+        await loadLocations()
+      } catch (err) {
+        message.className = 'message error'
+        message.style.display = 'block'
+        message.textContent = 'Eroare: ' + err.message
+      } finally {
+        button.disabled = false
+        button.textContent = 'Creează locație'
+      }
+    }
+  </script>
 </body>
 </html>
