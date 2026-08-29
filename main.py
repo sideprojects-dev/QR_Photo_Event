@@ -293,6 +293,47 @@ def get_locations(x_admin_password: str = Header(None)):
         "locations": result.data
     }
 
+@app.get("/api/locations/{location_slug}/events")
+def get_location_events(
+    location_slug: str,
+    x_admin_password: str = Header(None)
+):
+    if x_admin_password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    supabase = get_supabase()
+
+    location_result = (
+        supabase
+        .table("locations")
+        .select("id, name, slug")
+        .eq("slug", location_slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not location_result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Locația nu a fost găsită."
+        )
+
+    location = location_result.data[0]
+
+    events_result = (
+        supabase
+        .table("events")
+        .select("*")
+        .eq("location_id", location["id"])
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return {
+        "location": location,
+        "events": events_result.data
+    }
+
 @app.post("/api/create-event")
 async def api_create_event(
     event_name: str,
@@ -420,20 +461,60 @@ async def api_create_event(
     }
 
 @app.post("/api/events/{slug}/activate")
-def activate_event(slug: str, x_admin_password: str = Header(None)):
+def activate_event(
+    slug: str,
+    x_admin_password: str = Header(None)
+):
     if x_admin_password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     supabase = get_supabase()
 
-    existing = supabase.table("events").select("slug").eq("slug", slug).execute()
-    if not existing.data:
-        raise HTTPException(status_code=404, detail="Eveniment negăsit")
+    event_result = (
+        supabase
+        .table("events")
+        .select("id, slug, location_id")
+        .eq("slug", slug)
+        .limit(1)
+        .execute()
+    )
 
-    supabase.table("events").update({"status": "archived"}).eq("status", "active").execute()
-    supabase.table("events").update({"status": "active"}).eq("slug", slug).execute()
+    if not event_result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Eveniment negăsit."
+        )
 
-    return {"success": True, "slug": slug}
+    event = event_result.data[0]
+    location_id = event["location_id"]
+
+    if not location_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Evenimentul nu este asociat unei locații."
+        )
+
+    (
+        supabase
+        .table("events")
+        .update({"status": "archived"})
+        .eq("location_id", location_id)
+        .eq("status", "active")
+        .execute()
+    )
+
+    (
+        supabase
+        .table("events")
+        .update({"status": "active"})
+        .eq("id", event["id"])
+        .execute()
+    )
+
+    return {
+        "success": True,
+        "slug": slug
+    }
 
 @app.get("/admin")
 def admin_panel():

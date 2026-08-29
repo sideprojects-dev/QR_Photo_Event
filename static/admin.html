@@ -71,10 +71,21 @@
       word-break: break-all;
     }
 
-    .qr-btn {
+    .status-active {
+      color: #2d6a4f;
+      font-size: 12px;
+    }
+
+    .status-archived {
+      color: #999;
+      font-size: 12px;
+    }
+
+    .small-btn {
       width: auto;
       padding: 8px 16px;
       margin-top: 8px;
+      margin-right: 6px;
       font-size: 14px;
     }
 
@@ -145,6 +156,7 @@
 
   <!-- Admin Panel -->
   <div id="adminSection">
+
     <!-- Locations dashboard -->
     <div id="locationsDashboard">
       <div class="card">
@@ -191,12 +203,49 @@
           class="event-url"
         ></p>
       </div>
+
+      <div class="card">
+        <h2>➕ Eveniment nou</h2>
+
+        <input
+          type="text"
+          id="eventName"
+          placeholder="ex: Nunta Ana & Mihai"
+        >
+
+        <button
+          id="createEventBtn"
+          onclick="createNewEvent()"
+        >
+          Creează eveniment + QR
+        </button>
+
+        <div
+          id="eventMessage"
+          class="message"
+        ></div>
+      </div>
+
+      <div class="card">
+        <h2>📋 Evenimente</h2>
+        <div id="eventsList">Se încarcă...</div>
+      </div>
     </div>
   </div>
 
   <script>
     let adminPassword = ''
     let selectedLocationSlug = null
+    let selectedLocationName = null
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;')
+    }
 
     function login() {
       const pwd = document.getElementById('password').value
@@ -254,37 +303,51 @@
 
       container.innerHTML = locations.map(location => `
         <div class="event-card">
-          <strong>${location.name}</strong>
+          <strong>${escapeHtml(location.name)}</strong>
           <br>
 
-          <span class="event-url">${location.slug}</span>
+          <span class="event-url">${escapeHtml(location.slug)}</span>
           <br>
 
           <button
-            class="qr-btn"
-            onclick="openLocation('${location.slug}', '${location.name}')"
+            class="small-btn manage-location-btn"
+            data-slug="${escapeHtml(location.slug)}"
+            data-name="${escapeHtml(location.name)}"
           >
             Gestionează
           </button>
         </div>
       `).join('')
+
+      container.querySelectorAll('.manage-location-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          openLocation(button.dataset.slug, button.dataset.name)
+        })
+      })
     }
 
     function openLocation(slug, name) {
       selectedLocationSlug = slug
+      selectedLocationName = name
 
       document.getElementById('locationsDashboard').style.display = 'none'
       document.getElementById('locationDashboard').style.display = 'block'
 
       document.getElementById('selectedLocationName').textContent = name
       document.getElementById('selectedLocationSlug').textContent = slug
+
+      document.getElementById('eventMessage').style.display = 'none'
+      loadLocationEvents()
     }
 
     function backToLocations() {
       selectedLocationSlug = null
+      selectedLocationName = null
 
       document.getElementById('locationDashboard').style.display = 'none'
       document.getElementById('locationsDashboard').style.display = 'block'
+
+      loadLocations()
     }
 
     async function createLocation() {
@@ -331,6 +394,188 @@
       } finally {
         button.disabled = false
         button.textContent = 'Creează locație'
+      }
+    }
+
+    async function loadLocationEvents() {
+      if (!selectedLocationSlug) {
+        return
+      }
+
+      const container = document.getElementById('eventsList')
+      container.textContent = 'Se încarcă...'
+
+      try {
+        const response = await fetch(
+          `/api/locations/${encodeURIComponent(selectedLocationSlug)}/events`,
+          {
+            headers: {
+              'x-admin-password': adminPassword
+            }
+          }
+        )
+
+        if (response.status === 401) {
+          adminPassword = ''
+          document.getElementById('adminSection').style.display = 'none'
+          document.getElementById('loginSection').style.display = 'block'
+          document.getElementById('loginError').style.display = 'block'
+          return
+        }
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'Nu s-au putut încărca evenimentele.')
+        }
+
+        selectedLocationName = data.location.name
+        document.getElementById('selectedLocationName').textContent = data.location.name
+        document.getElementById('selectedLocationSlug').textContent = data.location.slug
+
+        renderEvents(data.events)
+      } catch (err) {
+        container.innerHTML = `<p style="color: #721c24;">${escapeHtml(err.message)}</p>`
+      }
+    }
+
+    function renderEvents(events) {
+      const container = document.getElementById('eventsList')
+
+      if (!events.length) {
+        container.innerHTML = '<p style="color: #888;">Nu există evenimente încă.</p>'
+        return
+      }
+
+      container.innerHTML = events.map(event => `
+        <div class="event-card">
+          <strong>${escapeHtml(event.name)}</strong>
+
+          ${
+            event.status === 'active'
+              ? '<span class="status-active"> ● ACTIV</span>'
+              : '<span class="status-archived"> ○ arhivat</span>'
+          }
+
+          <br>
+
+          <span class="event-url">
+            https://qr-photo-event.onrender.com/event/${escapeHtml(event.slug)}
+          </span>
+
+          <br>
+
+          <button
+            class="small-btn download-qr-btn"
+            data-slug="${escapeHtml(event.slug)}"
+          >
+            ⬇️ Descarcă QR
+          </button>
+
+          ${
+            event.status !== 'active'
+              ? `
+                <button
+                  class="small-btn activate-event-btn"
+                  data-slug="${escapeHtml(event.slug)}"
+                >
+                  ✅ Activează
+                </button>
+              `
+              : ''
+          }
+        </div>
+      `).join('')
+
+      container.querySelectorAll('.download-qr-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          downloadQR(button.dataset.slug)
+        })
+      })
+
+      container.querySelectorAll('.activate-event-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          activateEvent(button.dataset.slug)
+        })
+      })
+    }
+
+    async function createNewEvent() {
+      const name = document.getElementById('eventName').value.trim()
+
+      if (!name || !selectedLocationSlug) {
+        return
+      }
+
+      const button = document.getElementById('createEventBtn')
+      const message = document.getElementById('eventMessage')
+
+      button.disabled = true
+      button.textContent = 'Se creează...'
+      message.style.display = 'none'
+
+      try {
+        const url =
+          `/api/create-event?event_name=${encodeURIComponent(name)}` +
+          `&location_slug=${encodeURIComponent(selectedLocationSlug)}`
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'x-admin-password': adminPassword
+          }
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || 'Nu s-a putut crea evenimentul.')
+        }
+
+        message.className = 'message success'
+        message.style.display = 'block'
+        message.textContent = '✅ Evenimentul a fost creat.'
+
+        document.getElementById('eventName').value = ''
+
+        await loadLocationEvents()
+
+        //downloadQR(data.slug)
+      } catch (err) {
+        message.className = 'message error'
+        message.style.display = 'block'
+        message.textContent = 'Eroare: ' + err.message
+      } finally {
+        button.disabled = false
+        button.textContent = 'Creează eveniment + QR'
+      }
+    }
+
+    function downloadQR(slug) {
+      window.open(`/api/qr/${encodeURIComponent(slug)}`, '_blank')
+    }
+
+    async function activateEvent(slug) {
+      try {
+        const response = await fetch(
+          `/api/events/${encodeURIComponent(slug)}/activate`,
+          {
+            method: 'POST',
+            headers: {
+              'x-admin-password': adminPassword
+            }
+          }
+        )
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.detail || 'Nu s-a putut activa evenimentul.')
+        }
+
+        await loadLocationEvents()
+      } catch (err) {
+        alert('Eroare: ' + err.message)
       }
     }
   </script>
