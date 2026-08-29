@@ -4,21 +4,6 @@ let mediaRecorder = null
 let recordedChunks = []
 let capturedFile = null
 let isRecording = false
-let recordingStartTime = null
-
-// Diagnostic temporar: scrie într-un panou vizibil pe pagină, ca să putem
-// citi ce se întâmplă direct de pe telefonul unde apare problema,
-// fără console de la distanță.
-function debugLog(msg) {
-    const el = document.getElementById('debugLog')
-    const time = new Date().toLocaleTimeString('ro-RO', { hour12: false })
-    const line = `[${time}] ${msg}`
-    console.log(line)
-    if (el) {
-        el.textContent += line + '\n'
-        el.scrollTop = el.scrollHeight
-    }
-}
 
 // Start camera when page loads
 window.onload = () => startCamera()
@@ -43,25 +28,9 @@ async function startCamera() {
             audio: true
         })
         document.getElementById('viewfinder').srcObject = stream
-
-        const videoTrack = stream.getVideoTracks()[0]
-        debugLog('Camera pornită. Setări reale: ' + JSON.stringify(videoTrack.getSettings()))
-
-        // Semnalele astea ne spun dacă sistemul de operare oprește
-        // alimentarea cu cadre video (de obicei motiv termic/resurse),
-        // și exact la câte secunde de la începutul înregistrării.
-        videoTrack.onmute = () => debugLog('⚠️ VIDEO TRACK MUTED (t=' + secondsSinceRecordingStart() + 's)')
-        videoTrack.onunmute = () => debugLog('video track unmuted (t=' + secondsSinceRecordingStart() + 's)')
-        videoTrack.onended = () => debugLog('⚠️ VIDEO TRACK ENDED (t=' + secondsSinceRecordingStart() + 's)')
     } catch (err) {
         document.getElementById('message').textContent = 'Nu am putut accesa camera: ' + err.message
-        debugLog('Eroare getUserMedia: ' + err.message)
     }
-}
-
-function secondsSinceRecordingStart() {
-    if (!recordingStartTime) return 'n/a'
-    return ((performance.now() - recordingStartTime) / 1000).toFixed(1)
 }
 
 function flipCamera() {
@@ -120,26 +89,19 @@ async function toggleVideo() {
 
         mediaRecorder = new MediaRecorder(stream, recorderOptions)
 
-        recordingStartTime = performance.now()
-        debugLog('Start înregistrare. mimeType=' + mimeType + ' settings=' + JSON.stringify(stream.getVideoTracks()[0].getSettings()))
-
-        let chunkIndex = 0
         mediaRecorder.ondataavailable = e => {
-            chunkIndex++
-            debugLog(`chunk #${chunkIndex} @ t=${secondsSinceRecordingStart()}s, size=${e.data.size} bytes`)
             if (e.data.size > 0) recordedChunks.push(e.data)
         }
 
-        // Handler care lipsea complet înainte: dacă encoder-ul intern
-        // eșuează, browserul emite un eveniment 'error' pe care nu-l
-        // vedeam niciodată — recorder-ul pur și simplu "îngheța" silențios.
+        // Dacă encoder-ul intern eșuează, browserul emite un eveniment
+        // 'error' — înainte nu era tratat deloc, iar recorder-ul
+        // "îngheța" silențios, fără niciun mesaj către utilizator.
         mediaRecorder.onerror = (event) => {
-            debugLog('❌ MEDIARECORDER ERROR: ' + (event.error ? `${event.error.name} - ${event.error.message}` : JSON.stringify(event)))
+            document.getElementById('message').textContent =
+                'Eroare la înregistrare: ' + (event.error?.message || 'eroare necunoscută') + '. Încearcă din nou.'
         }
 
         mediaRecorder.onstop = () => {
-            debugLog('Stop înregistrare. Total chunk-uri: ' + chunkIndex + ', durată: ' + secondsSinceRecordingStart() + 's')
-
             const recorderMimeType = mediaRecorder.mimeType || recordedChunks[0]?.type || 'video/webm'
 
             const fileMimeType = recorderMimeType.split(';')[0]
@@ -162,8 +124,8 @@ async function toggleVideo() {
             document.getElementById('btnSend').style.display = 'inline-block'
         }
 
-        // timeslice de 1000ms: primim chunk-uri periodice, nu doar la stop,
-        // ca să vedem exact la ce secundă se oprește fluxul de date
+        // timeslice de 1000ms: primim chunk-uri periodice în loc de unul
+        // singur la stop, ca să nu pierdem tot clipul dacă ceva eșuează
         mediaRecorder.start(1000)
         isRecording = true
         document.getElementById('btnRecord').textContent = '⏹ Stop'
