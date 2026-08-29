@@ -184,7 +184,17 @@ def event_page(slug: str):
     
     with open("static/index.html", "r", encoding="utf-8") as f:
         html = f.read()
-    
+
+    # Cache-busting: unele telefoane deschid linkul scanat din QR
+    # într-un browser încorporat (in-app browser) care ține în cache
+    # agresiv fișierele statice. Fără asta, un telefon poate rula
+    # o versiune veche de script.js chiar dacă am urcat una nouă.
+    script_version = int(os.path.getmtime("static/script.js"))
+    html = html.replace(
+        '<script src="/static/script.js"></script>',
+        f'<script src="/static/script.js?v={script_version}"></script>'
+    )
+
     # Inject slug into page so JavaScript knows where to upload
     html = html.replace("</body>", f'<script>window.EVENT_SLUG = "{slug}";</script></body>')
     return HTMLResponse(html)
