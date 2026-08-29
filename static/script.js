@@ -113,15 +113,15 @@ async function toggleVideo() {
 
         mediaRecorder.start()
         isRecording = true
-        document.getElementById('btnRecord').textContent = '⏹ Stop'
-        document.getElementById('btnRecord').style.background = '#ff6600'
+        document.getElementById('btnRecord').textContent = 'Oprește'
+        document.getElementById('btnRecord').style.background = '#8f3720'
 
     } else {
         // Stop recording
         mediaRecorder.stop()
         isRecording = false
-        document.getElementById('btnRecord').textContent = '⏺ Înregistrează'
-        document.getElementById('btnRecord').style.background = 'red'
+        document.getElementById('btnRecord').textContent = 'Video'
+        document.getElementById('btnRecord').style.background = ''
     }
 }
 

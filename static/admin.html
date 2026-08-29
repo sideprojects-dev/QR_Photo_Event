@@ -205,6 +205,15 @@
       </div>
 
       <div class="card">
+        <h2>📌 Master QR</h2>
+        <p style="color:#666; font-size:14px;">
+          QR permanent al acestei locații. Se printează o singură dată și duce mereu la evenimentul activ curent.
+        </p>
+        <p>Eveniment activ: <strong id="masterQrActiveEvent">—</strong></p>
+        <button onclick="downloadMasterQR()">⬇️ Descarcă Master QR</button>
+      </div>
+
+      <div class="card">
         <h2>➕ Eveniment nou</h2>
 
         <input
@@ -434,8 +443,51 @@
         document.getElementById('selectedLocationSlug').textContent = data.location.slug
 
         renderEvents(data.events)
+        updateMasterQrCard(data.events)
       } catch (err) {
         container.innerHTML = `<p style="color: #721c24;">${escapeHtml(err.message)}</p>`
+      }
+    }
+
+    function updateMasterQrCard(events) {
+      const activeEvent = events.find(event => event.status === 'active')
+
+      document.getElementById('masterQrActiveEvent').textContent =
+        activeEvent ? activeEvent.name : 'niciun eveniment activ'
+    }
+
+    async function downloadMasterQR() {
+      if (!selectedLocationSlug) {
+        return
+      }
+
+      try {
+        const response = await fetch(
+          `/api/locations/${encodeURIComponent(selectedLocationSlug)}/master-qr`,
+          {
+            headers: {
+              'x-admin-password': adminPassword
+            }
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error('Nu s-a putut genera Master QR.')
+        }
+
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${selectedLocationSlug}_master_qr.png`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+
+        URL.revokeObjectURL(url)
+      } catch (err) {
+        alert('Eroare: ' + err.message)
       }
     }
 

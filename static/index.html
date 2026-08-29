@@ -2,33 +2,41 @@
 <html lang="ro">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/script.js"></script>
-  <title>Album Nuntă</title>
+  <title>Album Eveniment</title>
 </head>
 <body>
-  <h1>Album Nuntă</h1>
+  <div class="page">
 
-  <!-- Live camera feed -->
-  <video id="viewfinder" autoplay playsinline muted></video>
+    <header class="page-header">
+      <h1>Album Eveniment</h1>
+      <p class="subtitle">Adaugă o amintire de la eveniment</p>
+    </header>
 
-  <br>
+    <div class="media-frame">
+      <!-- Live camera feed -->
+      <video id="viewfinder" autoplay playsinline muted></video>
 
-  <!-- Camera controls -->
-  <button class="btn" id="btnFlip"    onclick="flipCamera()">🔄 Întoarce camera</button>
-  <button class="btn" id="btnCapture" onclick="takePhoto()">📸</button>
-  <button class="btn" id="btnRecord"  onclick="toggleVideo()">⏺ Înregistrează</button>
+      <!-- Preview after capture -->
+      <img id="preview" alt="previzualizare">
+      <video id="previewVideo" controls></video>
+    </div>
 
-  <!-- Preview after capture -->
-  <img id="preview" alt="previzualizare">
-  <video id="previewVideo" controls style="display:none; width:100%; max-width:500px; border-radius:12px; margin-top:10px;"></video>
+    <div class="controls">
+      <button class="btn btn-outline" id="btnFlip" onclick="flipCamera()">Schimbă camera</button>
 
-  <!-- Send button appears after capture -->
-  <br>
-  <button class="btn" id="btnSend" onclick="sendFile()">☁️ Trimite</button>
+      <div class="capture-row">
+        <button class="btn btn-primary" id="btnCapture" onclick="takePhoto()">Fotografie</button>
+        <button class="btn btn-accent" id="btnRecord" onclick="toggleVideo()">Video</button>
+      </div>
 
-  <p id="message"></p>
+      <button class="btn btn-send" id="btnSend" onclick="sendFile()">Trimite</button>
+    </div>
 
+    <p id="message"></p>
+
+  </div>
 </body>
 </html>
