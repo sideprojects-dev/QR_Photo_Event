@@ -69,20 +69,20 @@ function getSupportedVideoMimeType() {
 
 async function toggleVideo() {
     if (!isRecording) {
-        const videoTrack = stream.getVideoTracks()[0]
-
-        await videoTrack.applyConstraints({
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30, max: 30 }
-        })
-
         // Start recording
         recordedChunks = []
 
         const mimeType = getSupportedVideoMimeType()
 
-        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+        // Bitrate explicit: fără el, browserul alege un implicit prea mic
+        // pe multe telefoane, ceea ce dădea o calitate vizibil sub 1080p.
+        const recorderOptions = {
+            videoBitsPerSecond: 8000000,
+            audioBitsPerSecond: 128000
+        }
+        if (mimeType) recorderOptions.mimeType = mimeType
+
+        mediaRecorder = new MediaRecorder(stream, recorderOptions)
 
         mediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) recordedChunks.push(e.data)
