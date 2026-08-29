@@ -13,12 +13,17 @@ async function startCamera() {
     if (stream) stream.getTracks().forEach(t => t.stop())
 
     //modificare rezolutie
+    // 1080p, nu 4K: la 4K, encoder-ul hardware de pe telefoane mai slabe
+    // se poate bloca după câteva secunde de înregistrare (video îngheață,
+    // audio continuă). 1080p e suficient pentru fotografii/video de eveniment
+    // și e suportat stabil de imensa majoritate a telefoanelor.
     try {
         stream = await navigator.mediaDevices.getUserMedia({
              video: {
                 facingMode: { ideal: facingMode },
-                width: { ideal: 3840 },
-                height: { ideal: 2160 }
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30, max: 30 }
             },
             audio: true
         })
