@@ -180,6 +180,42 @@ def master_redirect():
     active_slug = result.data[0]["slug"]
     return RedirectResponse(f"/event/{active_slug}")
 
+@app.get("/event/master/{location_slug}")
+def master_redirect_location(location_slug: str):
+    # QR permanent al unei locații: nu se schimbă niciodată, doar
+    # redirecționează mereu către evenimentul activ curent al locației.
+    supabase = get_supabase()
+
+    location_result = (
+        supabase
+        .table("locations")
+        .select("id")
+        .eq("slug", location_slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not location_result.data:
+        return HTMLResponse("<h1>Locația nu a fost găsită</h1>", status_code=404)
+
+    location_id = location_result.data[0]["id"]
+
+    event_result = (
+        supabase
+        .table("events")
+        .select("slug")
+        .eq("location_id", location_id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+    )
+
+    if not event_result.data:
+        return HTMLResponse("<h1>Niciun eveniment activ momentan la această locație</h1>", status_code=404)
+
+    active_slug = event_result.data[0]["slug"]
+    return RedirectResponse(f"/event/{active_slug}")
+
 @app.get("/event/{slug}")
 def event_page(slug: str):
     supabase = get_supabase()
