@@ -235,6 +235,15 @@ def event_page(slug: str):
         f'<script src="/static/script.js?v={script_version}"></script>'
     )
 
+    # Aceeași problemă poate apărea și la CSS: unele browsere încorporate
+    # (deschise prin scanarea QR-ului) țin în cache agresiv fișierele
+    # statice, inclusiv style.css.
+    style_version = int(os.path.getmtime("static/style.css"))
+    html = html.replace(
+        '<link rel="stylesheet" href="/static/style.css">',
+        f'<link rel="stylesheet" href="/static/style.css?v={style_version}">'
+    )
+
     # Inject slug into page so JavaScript knows where to upload
     html = html.replace("</body>", f'<script>window.EVENT_SLUG = "{slug}";</script></body>')
     return HTMLResponse(html)
@@ -565,46 +574,6 @@ def get_events(x_admin_password: str = Header(None)):
     supabase = get_supabase()
     result = supabase.table("events").select("*").execute()
     return {"events": result.data}
-
-@app.get("/api/locations/{location_slug}/master-qr")
-def get_location_master_qr(
-    location_slug: str,
-    x_admin_password: str = Header(None)
-):
-    if x_admin_password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    supabase = get_supabase()
-
-    location_result = (
-        supabase
-        .table("locations")
-        .select("id")
-        .eq("slug", location_slug)
-        .limit(1)
-        .execute()
-    )
-
-    if not location_result.data:
-        raise HTTPException(status_code=404, detail="Locația nu a fost găsită.")
-
-    # QR-ul conține URL-ul permanent /event/master/{location_slug} —
-    # nu depinde de niciun eveniment anume, deci nu se schimbă niciodată.
-    url = f"https://qr-photo-event.onrender.com/event/master/{location_slug}"
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
-    qr.add_data(url)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-
-    buf = io_module.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-
-    return StreamingResponse(
-        buf,
-        media_type="image/png",
-        headers={"Content-Disposition": f"attachment; filename={location_slug}_master_qr.png"}
-    )
 
 @app.get("/api/qr/{slug}")
 def get_qr(slug: str):
