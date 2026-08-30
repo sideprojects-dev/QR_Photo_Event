@@ -34,13 +34,31 @@ function flipCamera() {
     startCamera()
 }
 
+function isIOSDevice() {
+    // Safari și toate browserele de pe iOS (rulează tot pe WebKit)
+    // oglindesc automat previzualizarea camerei frontale — comportament
+    // al browserului, nu ceva controlat de codul nostru.
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 function takePhoto() {
     // Draw current video frame onto a canvas, then convert to image
     const video = document.getElementById('viewfinder')
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
-    canvas.getContext('2d').drawImage(video, 0, 0)
+    const ctx = canvas.getContext('2d')
+
+    // Corectăm oglindirea doar unde e confirmată: iOS + cameră frontală.
+    // Pe Android nu am confirmat problema, deci nu aplicăm corecția
+    // acolo, ca să nu introducem o oglindire nouă unde acum e corect.
+    if (facingMode === 'user' && isIOSDevice()) {
+        ctx.translate(canvas.width, 0)
+        ctx.scale(-1, 1)
+    }
+
+    ctx.drawImage(video, 0, 0)
 
     canvas.toBlob(blob => {
         capturedFile = new File([blob], 'photo.jpg', { type: 'image/jpeg' })
