@@ -22,7 +22,13 @@ async function startCamera() {
             },
             audio: true
         })
-        document.getElementById('viewfinder').srcObject = stream
+        const viewfinder = document.getElementById('viewfinder')
+        viewfinder.srcObject = stream
+
+        // Pe iOS, Safari oglindește automat previzualizarea camerei
+        // frontale. Corectăm vizual aici, ca ce vezi în previzualizare
+        // să semene cu poza finală (deja corectată separat, în takePhoto()).
+        viewfinder.classList.toggle('unmirror', facingMode === 'user' && isIOSDevice())
     } catch (err) {
         document.getElementById('message').textContent = 'Nu am putut accesa camera: ' + err.message
     }

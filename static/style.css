@@ -75,6 +75,10 @@ body {
   display: none;
 }
 
+#viewfinder.unmirror {
+  transform: scaleX(-1);
+}
+
 .controls {
   display: flex;
   flex-direction: column;
