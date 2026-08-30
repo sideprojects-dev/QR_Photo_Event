@@ -52,10 +52,6 @@ function takePhoto() {
 
     const shouldFlip = facingMode === 'user' && isIOSDevice()
 
-    // Diagnostic temporar — de eliminat după ce confirmăm cauza reală
-    document.getElementById('message').textContent =
-        `Debug: facingMode=${facingMode}, iOS detectat=${isIOSDevice()}, flip aplicat=${shouldFlip}`
-
     // Corectăm oglindirea doar unde e confirmată: iOS + cameră frontală.
     // Pe Android nu am confirmat problema, deci nu aplicăm corecția
     // acolo, ca să nu introducem o oglindire nouă unde acum e corect.
