@@ -37,6 +37,33 @@
 
     <p id="message"></p>
 
+    <section class="gallery-section" aria-labelledby="galleryTitle">
+      <div class="gallery-header">
+        <div>
+          <h2 id="galleryTitle">Galerie</h2>
+          <p class="gallery-subtitle">Amintirile încărcate la acest eveniment</p>
+        </div>
+      </div>
+
+      <div id="galleryGrid" class="gallery-grid"></div>
+
+      <p id="galleryEmpty" class="gallery-empty">Nu există încă fotografii sau videoclipuri.</p>
+      <p id="galleryMessage" class="gallery-message"></p>
+
+      <button class="btn btn-outline gallery-load-more" id="btnLoadMore" type="button" onclick="loadMoreGallery()">
+        Încarcă mai multe
+      </button>
+    </section>
+
+  </div>
+
+  <div id="galleryModal" class="gallery-modal" aria-hidden="true">
+    <button class="gallery-modal-close" type="button" aria-label="Închide" onclick="closeGalleryModal()">×</button>
+
+    <div class="gallery-modal-content" onclick="event.stopPropagation()">
+      <img id="galleryModalImage" alt="Fotografie din galerie">
+      <video id="galleryModalVideo" controls playsinline></video>
+    </div>
   </div>
 </body>
 </html>

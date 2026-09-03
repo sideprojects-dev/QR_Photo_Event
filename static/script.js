@@ -8,7 +8,16 @@ let isRecording = false
 let selectedCameraId = null
 let availableCameras = []
 
-window.onload = () => startCamera()
+let galleryOffset = 0
+let galleryHasMore = false
+let galleryLoading = false
+
+const galleryPageSize = 30
+
+window.onload = async () => {
+    await startCamera()
+    await loadGallery(true)
+}
 
 
 async function getAvailableCameras() {
@@ -764,6 +773,8 @@ async function sendFile() {
 
         await startCamera()
 
+        await loadGallery(true)
+
     } catch (err) {
         document.getElementById(
             'message'
@@ -776,3 +787,268 @@ async function sendFile() {
         ).disabled = false
     }
 }
+
+async function loadGallery(reset = false) {
+    const eventSlug = window.EVENT_SLUG
+
+    if (!eventSlug || galleryLoading) {
+        return
+    }
+
+    const grid = document.getElementById('galleryGrid')
+    const emptyState = document.getElementById('galleryEmpty')
+    const message = document.getElementById('galleryMessage')
+    const loadMoreButton = document.getElementById('btnLoadMore')
+
+    if (!grid || !emptyState || !message || !loadMoreButton) {
+        return
+    }
+
+    if (reset) {
+        galleryOffset = 0
+        galleryHasMore = false
+        grid.innerHTML = ''
+    }
+
+    galleryLoading = true
+
+    loadMoreButton.disabled = true
+    message.textContent = 'Se încarcă galeria...'
+
+    try {
+        const response = await fetch(
+            `/api/events/${encodeURIComponent(eventSlug)}/media?limit=${galleryPageSize}&offset=${galleryOffset}`
+        )
+
+        const data = await response.json()
+
+        if (!response.ok) {
+            throw new Error(
+                data.detail ||
+                data.error ||
+                'Nu am putut încărca galeria.'
+            )
+        }
+
+        const items = Array.isArray(data.items)
+            ? data.items
+            : []
+
+        renderGalleryItems(items)
+
+        galleryHasMore =
+            Boolean(data.pagination?.has_more)
+
+        galleryOffset =
+            data.pagination?.next_offset ??
+            (galleryOffset + items.length)
+
+        emptyState.style.display =
+            grid.children.length === 0
+                ? 'block'
+                : 'none'
+
+        loadMoreButton.style.display =
+            galleryHasMore
+                ? 'block'
+                : 'none'
+
+        message.textContent = ''
+
+    } catch (err) {
+        message.textContent =
+            'Nu am putut încărca galeria: ' +
+            err.message
+
+        loadMoreButton.style.display = 'none'
+
+    } finally {
+        galleryLoading = false
+        loadMoreButton.disabled = false
+    }
+}
+
+
+function renderGalleryItems(items) {
+    const grid =
+        document.getElementById('galleryGrid')
+
+    if (!grid) {
+        return
+    }
+
+    items.forEach(item => {
+        const tile =
+            createGalleryItem(item)
+
+        grid.appendChild(tile)
+    })
+}
+
+
+function createGalleryItem(item) {
+    const button =
+        document.createElement('button')
+
+    button.type = 'button'
+    button.className = 'gallery-item'
+
+    const isVideo =
+        item.content_type?.startsWith('video/')
+
+    if (isVideo) {
+        const videoPlaceholder =
+            document.createElement('div')
+
+        videoPlaceholder.className =
+            'gallery-video-placeholder'
+
+        const playIcon =
+            document.createElement('span')
+
+        playIcon.className =
+            'gallery-play-icon'
+
+        playIcon.textContent = '▶'
+
+        const label =
+            document.createElement('span')
+
+        label.className =
+            'gallery-video-label'
+
+        label.textContent =
+            'Video'
+
+        videoPlaceholder.appendChild(playIcon)
+        videoPlaceholder.appendChild(label)
+
+        button.appendChild(videoPlaceholder)
+
+    } else {
+        const image =
+            document.createElement('img')
+
+        image.src =
+            `/media/${encodeURIComponent(item.id)}`
+
+        image.alt =
+            'Fotografie din galerie'
+
+        image.loading =
+            'lazy'
+
+        button.appendChild(image)
+    }
+
+    button.addEventListener(
+        'click',
+        () => openGalleryModal(item)
+    )
+
+    return button
+}
+
+
+function openGalleryModal(item) {
+    const modal =
+        document.getElementById('galleryModal')
+
+    const image =
+        document.getElementById('galleryModalImage')
+
+    const video =
+        document.getElementById('galleryModalVideo')
+
+    if (!modal || !image || !video) {
+        return
+    }
+
+    const mediaUrl =
+        `/media/${encodeURIComponent(item.id)}`
+
+    const isVideo =
+        item.content_type?.startsWith('video/')
+
+    image.style.display =
+        isVideo ? 'none' : 'block'
+
+    video.style.display =
+        isVideo ? 'block' : 'none'
+
+    if (isVideo) {
+        image.src = ''
+
+        video.src = mediaUrl
+        video.load()
+
+    } else {
+        video.pause()
+        video.removeAttribute('src')
+        video.load()
+
+        image.src = mediaUrl
+    }
+
+    modal.classList.add('is-open')
+    modal.setAttribute('aria-hidden', 'false')
+
+    document.body.classList.add('modal-open')
+}
+
+
+function closeGalleryModal() {
+    const modal =
+        document.getElementById('galleryModal')
+
+    const image =
+        document.getElementById('galleryModalImage')
+
+    const video =
+        document.getElementById('galleryModalVideo')
+
+    if (!modal || !image || !video) {
+        return
+    }
+
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
+
+    image.src = ''
+
+    modal.classList.remove('is-open')
+    modal.setAttribute('aria-hidden', 'true')
+
+    document.body.classList.remove('modal-open')
+}
+
+
+async function loadMoreGallery() {
+    if (!galleryHasMore) {
+        return
+    }
+
+    await loadGallery(false)
+}
+
+
+document.addEventListener('click', event => {
+    const modal =
+        document.getElementById('galleryModal')
+
+    if (
+        modal &&
+        modal.classList.contains('is-open') &&
+        event.target === modal
+    ) {
+        closeGalleryModal()
+    }
+})
+
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeGalleryModal()
+    }
+})
