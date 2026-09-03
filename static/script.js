@@ -269,21 +269,52 @@ function flipCamera() {
 }
 
 
-function takePhoto() {
-    const video =
-        document.getElementById('viewfinder')
+async function takePhoto() {
+    const video = document.getElementById('viewfinder')
+    const videoTrack = stream?.getVideoTracks()[0]
 
-    const canvas =
-        document.createElement('canvas')
+    if (!videoTrack) {
+        document.getElementById('message').textContent =
+            'Camera nu este disponibilă.'
+        return
+    }
 
-    canvas.width =
-        video.videoWidth
+    try {
+        // Prefer real still-photo capture when supported.
+        if ('ImageCapture' in window) {
+            const imageCapture = new ImageCapture(videoTrack)
 
-    canvas.height =
-        video.videoHeight
+            const blob = await imageCapture.takePhoto()
 
-    const ctx =
-        canvas.getContext('2d')
+            capturedFile = new File(
+                [blob],
+                'photo.jpg',
+                {
+                    type: blob.type || 'image/jpeg'
+                }
+            )
+
+            showPhotoPreview(blob)
+            return
+        }
+    } catch (err) {
+        console.warn(
+            'ImageCapture nu a funcționat. Folosim fallback canvas:',
+            err
+        )
+    }
+
+    // Fallback for Safari/iOS or unsupported browsers.
+    takePhotoFromVideoFrame(video)
+}
+
+function takePhotoFromVideoFrame(video) {
+    const canvas = document.createElement('canvas')
+
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    const ctx = canvas.getContext('2d')
 
     const shouldFlip =
         facingMode === 'user'
@@ -308,38 +339,48 @@ function takePhoto() {
 
     canvas.toBlob(
         blob => {
-            capturedFile =
-                new File(
-                    [blob],
-                    'photo.jpg',
-                    {
-                        type: 'image/jpeg'
-                    }
-                )
+            if (!blob) {
+                document.getElementById('message').textContent =
+                    'Nu am putut crea fotografia.'
+                return
+            }
 
-            const preview =
-                document.getElementById('preview')
+            capturedFile = new File(
+                [blob],
+                'photo.jpg',
+                {
+                    type: 'image/jpeg'
+                }
+            )
 
-            preview.src =
-                URL.createObjectURL(blob)
-
-            preview.style.display =
-                'block'
-
-            document
-                .getElementById('previewVideo')
-                .style.display = 'none'
-
-            document
-                .getElementById('btnSend')
-                .style.display = 'inline-block'
+            showPhotoPreview(blob)
         },
-
         'image/jpeg',
         0.95
     )
 }
 
+
+function showPhotoPreview(blob) {
+    const preview =
+        document.getElementById('preview')
+
+    preview.src =
+        URL.createObjectURL(blob)
+
+    preview.style.display =
+        'block'
+
+    document.getElementById(
+        'previewVideo'
+    ).style.display =
+        'none'
+
+    document.getElementById(
+        'btnSend'
+    ).style.display =
+        'inline-block'
+}
 
 function getSupportedVideoMimeType() {
     const types = [
