@@ -85,6 +85,7 @@ function getCameraDisplayName(camera, index) {
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u2010-\u2015\u2212]/g, '-')
 
     // Front camera
     if (
@@ -95,7 +96,7 @@ function getCameraDisplayName(camera, index) {
         return 'front'
     }
 
-    // Ignore Apple's logical/composite cameras
+    // Logical/composite cameras
     if (
         label.includes('tripla') ||
         label.includes('triple') ||
@@ -106,7 +107,6 @@ function getCameraDisplayName(camera, index) {
     }
 
     // Ultra-wide / 0.5x
-    // IMPORTANT: check this BEFORE generic "spate/back/rear".
     if (
         label.includes('ultra-superangular') ||
         label.includes('ultra superangular') ||
@@ -119,6 +119,7 @@ function getCameraDisplayName(camera, index) {
 
     // Telephoto
     if (
+        label.includes('teleobiectiv') ||
         label.includes('telephoto') ||
         label.includes('tele')
     ) {
