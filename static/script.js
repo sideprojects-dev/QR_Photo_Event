@@ -28,7 +28,7 @@ async function startCamera() {
         // Pe iOS, Safari oglindește automat previzualizarea camerei
         // frontale. Corectăm vizual aici, ca ce vezi în previzualizare
         // să semene cu poza finală (deja corectată separat, în takePhoto()).
-        viewfinder.classList.toggle('unmirror', facingMode === 'user' && isIOSDevice())
+        viewfinder.classList.toggle('unmirror', facingMode === 'user')
     } catch (err) {
         document.getElementById('message').textContent = 'Nu am putut accesa camera: ' + err.message
     }
@@ -40,14 +40,6 @@ function flipCamera() {
     startCamera()
 }
 
-function isIOSDevice() {
-    // Safari și toate browserele de pe iOS (rulează tot pe WebKit)
-    // oglindesc automat previzualizarea camerei frontale — comportament
-    // al browserului, nu ceva controlat de codul nostru.
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
 function takePhoto() {
     // Draw current video frame onto a canvas, then convert to image
     const video = document.getElementById('viewfinder')
@@ -56,11 +48,11 @@ function takePhoto() {
     canvas.height = video.videoHeight
     const ctx = canvas.getContext('2d')
 
-    const shouldFlip = facingMode === 'user' && isIOSDevice()
+    const shouldFlip = facingMode === 'user'
 
-    // Corectăm oglindirea doar unde e confirmată: iOS + cameră frontală.
-    // Pe Android nu am confirmat problema, deci nu aplicăm corecția
-    // acolo, ca să nu introducem o oglindire nouă unde acum e corect.
+    // Camera frontala este afisata si salvata in modul in modul oglindit
+    // indiferent de platforma
+
     if (shouldFlip) {
         ctx.translate(canvas.width, 0)
         ctx.scale(-1, 1)
