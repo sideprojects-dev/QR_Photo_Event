@@ -57,6 +57,73 @@ function getCameraDisplayName(camera, index) {
     }
 
     return label
+}function getCameraType(camera) {
+    const label = camera.label.toLowerCase()
+
+    // Front camera
+    if (
+        label.includes('față') ||
+        label.includes('fata') ||
+        label.includes('front') ||
+        label.includes('facetime')
+    ) {
+        return 'front'
+    }
+
+    // Ignore Apple's logical/composite cameras
+    if (
+        label.includes('tripl') ||
+        label.includes('triple') ||
+        label.includes('dubl') ||
+        label.includes('dual')
+    ) {
+        return 'composite'
+    }
+
+    // Ultra-wide / 0.5x
+    if (
+        label.includes('ultra-superangular') ||
+        label.includes('ultra wide') ||
+        label.includes('ultrawide')
+    ) {
+        return 'ultrawide'
+    }
+
+    // Telephoto
+    if (
+        label.includes('tele') ||
+        label.includes('telephoto')
+    ) {
+        return 'tele'
+    }
+
+    // Main rear camera
+    if (
+        label.includes('spate') ||
+        label.includes('back') ||
+        label.includes('rear')
+    ) {
+        return 'main'
+    }
+
+    return 'unknown'
+}
+
+
+function getCameraDisplayName(type) {
+    switch (type) {
+        case 'ultrawide':
+            return '0.5×'
+
+        case 'main':
+            return '1×'
+
+        case 'tele':
+            return 'Tele'
+
+        default:
+            return 'Camera'
+    }
 }
 
 
@@ -80,27 +147,40 @@ function renderCameraSelector() {
 
     selector.innerHTML = ''
 
-    if (availableCameras.length <= 1) {
+    // Front camera is controlled through the existing flip button.
+    if (facingMode === 'user') {
+        selector.style.display = 'none'
+        return
+    }
+
+    const selectableCameras = availableCameras
+        .map(camera => ({
+            camera,
+            type: getCameraType(camera)
+        }))
+        .filter(item =>
+            item.type === 'ultrawide' ||
+            item.type === 'main' ||
+            item.type === 'tele'
+        )
+
+    if (selectableCameras.length <= 1) {
         selector.style.display = 'none'
         return
     }
 
     selector.style.display = 'flex'
 
-    availableCameras.forEach((camera, index) => {
+    selectableCameras.forEach(({ camera, type }) => {
         const button = document.createElement('button')
 
         button.type = 'button'
-        button.textContent = getCameraDisplayName(camera, index)
+        button.textContent = getCameraDisplayName(type)
 
         const isSelected = camera.deviceId === selectedCameraId
 
-        if (isSelected) {
-            button.style.fontWeight = 'bold'
-            button.style.opacity = '1'
-        } else {
-            button.style.opacity = '0.7'
-        }
+        button.style.fontWeight = isSelected ? 'bold' : 'normal'
+        button.style.opacity = isSelected ? '1' : '0.7'
 
         button.addEventListener('click', () => {
             selectCamera(camera.deviceId)
