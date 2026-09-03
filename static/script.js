@@ -158,6 +158,15 @@ function renderCameraSelector() {
         return
     }
 
+    console.log(
+    'Camere disponibile:',
+    availableCameras.map(camera => ({
+        label: camera.label,
+        type: getCameraType(camera),
+        deviceId: camera.deviceId
+    }))
+)
+
     const selectableCameras = availableCameras
         .map(camera => ({
             camera,
