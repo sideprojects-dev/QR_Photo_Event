@@ -4,7 +4,8 @@ let mediaRecorder = null
 let recordedChunks = []
 let capturedFile = null
 let isRecording = false
-let selectedCamera = null
+
+let selectedCameraId = null
 let availableCameras = []
 
 // Start camera when page loads
