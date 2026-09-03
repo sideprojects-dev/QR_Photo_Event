@@ -367,7 +367,7 @@ async function toggleVideo() {
 
         const recorderOptions = {
             videoBitsPerSecond:
-                8000000,
+                12000000,
 
             audioBitsPerSecond:
                 128000
