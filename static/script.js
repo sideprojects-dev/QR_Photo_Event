@@ -58,11 +58,13 @@ function getCameraDisplayName(camera, index) {
 
     return label
 }function getCameraType(camera) {
-    const label = camera.label.toLowerCase()
+    const label = camera.label
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
 
     // Front camera
     if (
-        label.includes('față') ||
         label.includes('fata') ||
         label.includes('front') ||
         label.includes('facetime')
@@ -72,17 +74,20 @@ function getCameraDisplayName(camera, index) {
 
     // Ignore Apple's logical/composite cameras
     if (
-        label.includes('tripl') ||
+        label.includes('tripla') ||
         label.includes('triple') ||
-        label.includes('dubl') ||
+        label.includes('dubla') ||
         label.includes('dual')
     ) {
         return 'composite'
     }
 
     // Ultra-wide / 0.5x
+    // IMPORTANT: check this BEFORE generic "spate/back/rear".
     if (
         label.includes('ultra-superangular') ||
+        label.includes('ultra superangular') ||
+        label.includes('ultra-wide') ||
         label.includes('ultra wide') ||
         label.includes('ultrawide')
     ) {
@@ -91,8 +96,8 @@ function getCameraDisplayName(camera, index) {
 
     // Telephoto
     if (
-        label.includes('tele') ||
-        label.includes('telephoto')
+        label.includes('telephoto') ||
+        label.includes('tele')
     ) {
         return 'tele'
     }
@@ -113,10 +118,10 @@ function getCameraDisplayName(camera, index) {
 function getCameraDisplayName(type) {
     switch (type) {
         case 'ultrawide':
-            return '0.5×'
+            return '0.5x'
 
         case 'main':
-            return '1×'
+            return '1x'
 
         case 'tele':
             return 'Tele'
