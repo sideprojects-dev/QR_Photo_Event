@@ -17,8 +17,9 @@ async function startCamera() {
         stream = await navigator.mediaDevices.getUserMedia({
              video: {
                 facingMode: { ideal: facingMode },
-                width: { ideal: 3840 },
-                height: { ideal: 2160 }
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+                frameRate: { ideal: 30, max: 60 }
             },
             audio: true
         })
@@ -102,6 +103,13 @@ async function toggleVideo() {
 
         mediaRecorder = new MediaRecorder(stream, recorderOptions)
 
+        mediaRecorder.onerror = e => {
+            console.error('MediaRecorder error:', e.error)
+
+            document.getElementById('message').textContent = 
+            'A apărut o eroare la înregistrarea video: ' + e.error.message
+        }
+
         mediaRecorder.ondataavailable = e => {
             if (e.data.size > 0) recordedChunks.push(e.data)
         }
@@ -129,7 +137,7 @@ async function toggleVideo() {
             document.getElementById('btnSend').style.display = 'inline-block'
         }
 
-        mediaRecorder.start()
+        mediaRecorder.start(1000)  // collect data in 1-second chunks
         isRecording = true
         document.getElementById('btnRecord').textContent = 'Oprește'
         document.getElementById('btnRecord').style.background = '#8f3720'
