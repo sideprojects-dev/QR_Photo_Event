@@ -108,44 +108,148 @@ def auth_callback(code: str, state: str = None):
 
     return {"mesaj": "Successfully authenticated!"}
 
+def get_event_by_slug(supabase, slug: str):
+    result = (
+        supabase
+        .table("events")
+        .select("id, folder_id")
+        .eq("slug", slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Eveniment negăsit."
+        )
+
+    return result.data[0]
+
+
+def upload_file_to_drive(drive, file, file_name: str, folder_id: str):
+    file_metadata = {
+        "name": file_name,
+        "parents": [folder_id]
+    }
+
+    media = MediaIoBaseUpload(
+        file.file,
+        mimetype=file.content_type,
+        chunksize=8 * 1024 * 1024,
+        resumable=True
+    )
+
+    request = drive.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    )
+
+    response = None
+
+    while response is None:
+        _, response = request.next_chunk()
+
+    return response["id"]
+
+
+def save_media_record(
+    supabase,
+    event_id: int,
+    drive_file_id: str,
+    file_name: str,
+    content_type: str,
+    size_bytes: int | None
+):
+    result = (
+        supabase
+        .table("media")
+        .insert({
+            "event_id": event_id,
+            "drive_file_id": drive_file_id,
+            "file_name": file_name,
+            "content_type": content_type,
+            "size_bytes": size_bytes
+        })
+        .execute()
+    )
+
+    return result.data[0] if result.data else None
+
 @app.post("/upload/{slug}")
-async def upload(slug: str, file: UploadFile = File(...)):
+async def upload(
+    slug: str,
+    file: UploadFile = File(...)
+):
     if not file.content_type or not file.content_type.startswith(("image/", "video/")):
         raise HTTPException(
             status_code=400,
             detail="Only image and video files are allowed."
         )
 
-    # Get folder_id for this event from Supabase
     supabase = get_supabase()
-    result = supabase.table("events").select("folder_id").eq("slug", slug).execute()
-    
-    if not result.data:
-        return {"mesaj": "Eveniment negăsit"}
-    
-    event_folder_id = result.data[0]["folder_id"]
+    event = get_event_by_slug(supabase, slug)
 
-    # Generate unique filename
-    extension = os.path.splitext(file.filename)[1]
-    unique_name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{extension}"
+    extension = os.path.splitext(file.filename or "")[1]
 
-    # Upload to the event's specific folder
-    drive = get_drive_service()
-    file_metadata = {
-        "name": unique_name,
-        "parents": [event_folder_id]  # event folder, not main folder
-    }
+    unique_name = (
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+        f"{uuid.uuid4().hex[:6]}{extension}"
+    )
 
-    # upload pe bucati
     await file.seek(0)
-    media = MediaIoBaseUpload(file.file, mimetype=file.content_type, chunksize=8 * 1024 * 1024, resumable=True)
-    request = drive.files().create(body=file_metadata, media_body=media, fields="id")
-    response = None
 
-    while response is None:
-        _, response = request.next_chunk()
+    file_size = None
 
-    return {"mesaj": "Saved!"}
+    try:
+        current_position = file.file.tell()
+        file.file.seek(0, os.SEEK_END)
+        file_size = file.file.tell()
+        file.file.seek(current_position)
+    except Exception:
+        file_size = None
+
+    drive = get_drive_service()
+    drive_file_id = None
+
+    try:
+        drive_file_id = upload_file_to_drive(
+            drive=drive,
+            file=file,
+            file_name=unique_name,
+            folder_id=event["folder_id"]
+        )
+
+        save_media_record(
+            supabase=supabase,
+            event_id=event["id"],
+            drive_file_id=drive_file_id,
+            file_name=unique_name,
+            content_type=file.content_type,
+            size_bytes=file_size
+        )
+
+    except Exception:
+        if drive_file_id:
+            try:
+                drive.files().delete(
+                    fileId=drive_file_id
+                ).execute()
+            except Exception:
+                pass
+
+        raise
+
+    return {
+        "success": True,
+        "media": {
+            "drive_file_id": drive_file_id,
+            "file_name": unique_name,
+            "content_type": file.content_type,
+            "size_bytes": file_size
+        }
+    }
 
 def get_supabase():
     service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
