@@ -4,40 +4,198 @@ let mediaRecorder = null
 let recordedChunks = []
 let capturedFile = null
 let isRecording = false
+let selectedCamera = null
+let availableCameras = []
 
 // Start camera when page loads
 window.onload = () => startCamera()
 
-async function startCamera() {
-    // Stop existing stream if any
-    if (stream) stream.getTracks().forEach(t => t.stop())
+async function getAvailableCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices()
 
-    //modificare rezolutie
+    return devices.filter(device => device.kind === 'videoinput')
+}
+
+
+function getCameraDisplayName(camera, index) {
+    const label = camera.label.trim()
+
+    if (!label) {
+        return `Camera ${index + 1}`
+    }
+
+    const normalizedLabel = label.toLowerCase()
+
+    if (
+        normalizedLabel.includes('ultra wide') ||
+        normalizedLabel.includes('ultrawide')
+    ) {
+        return 'Ultra Wide'
+    }
+
+    if (
+        normalizedLabel.includes('telephoto') ||
+        normalizedLabel.includes('tele')
+    ) {
+        return 'Tele'
+    }
+
+    if (
+        normalizedLabel.includes('front') ||
+        normalizedLabel.includes('facetime')
+    ) {
+        return 'Front'
+    }
+
+    if (
+        normalizedLabel.includes('back') ||
+        normalizedLabel.includes('rear') ||
+        normalizedLabel.includes('wide')
+    ) {
+        return 'Main'
+    }
+
+    return label
+}
+
+
+function renderCameraSelector() {
+    const viewfinder = document.getElementById('viewfinder')
+
+    let selector = document.getElementById('cameraSelector')
+
+    if (!selector) {
+        selector = document.createElement('div')
+        selector.id = 'cameraSelector'
+
+        selector.style.display = 'flex'
+        selector.style.gap = '8px'
+        selector.style.justifyContent = 'center'
+        selector.style.flexWrap = 'wrap'
+        selector.style.margin = '10px 0'
+
+        viewfinder.insertAdjacentElement('afterend', selector)
+    }
+
+    selector.innerHTML = ''
+
+    if (availableCameras.length <= 1) {
+        selector.style.display = 'none'
+        return
+    }
+
+    selector.style.display = 'flex'
+
+    availableCameras.forEach((camera, index) => {
+        const button = document.createElement('button')
+
+        button.type = 'button'
+        button.textContent = getCameraDisplayName(camera, index)
+
+        const isSelected = camera.deviceId === selectedCameraId
+
+        if (isSelected) {
+            button.style.fontWeight = 'bold'
+            button.style.opacity = '1'
+        } else {
+            button.style.opacity = '0.7'
+        }
+
+        button.addEventListener('click', () => {
+            selectCamera(camera.deviceId)
+        })
+
+        selector.appendChild(button)
+    })
+}
+
+
+async function selectCamera(deviceId) {
+    if (isRecording) {
+        document.getElementById('message').textContent =
+            'Oprește înregistrarea înainte să schimbi camera.'
+        return
+    }
+
+    if (deviceId === selectedCameraId) {
+        return
+    }
+
+    selectedCameraId = deviceId
+
+    await startCamera()
+}
+
+async function startCamera() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop())
+    }
+
     try {
+        const videoConstraints = {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+        }
+
+        if (selectedCameraId) {
+            videoConstraints.deviceId = {
+                exact: selectedCameraId
+            }
+        } else {
+            videoConstraints.facingMode = {
+                ideal: facingMode
+            }
+        }
+
         stream = await navigator.mediaDevices.getUserMedia({
-             video: {
-                facingMode: { ideal: facingMode },
-                width: { ideal: 1920 },
-                height: { ideal: 1080 },
-                frameRate: { ideal: 30, max: 60 }
-            },
+            video: videoConstraints,
             audio: true
         })
+
+        const videoTrack = stream.getVideoTracks()[0]
+        const settings = videoTrack.getSettings()
+
+        if (settings.deviceId) {
+            selectedCameraId = settings.deviceId
+        }
+
+        if (settings.facingMode) {
+            facingMode = settings.facingMode
+        }
+
         const viewfinder = document.getElementById('viewfinder')
         viewfinder.srcObject = stream
 
-        // Pe iOS, Safari oglindește automat previzualizarea camerei
-        // frontale. Corectăm vizual aici, ca ce vezi în previzualizare
-        // să semene cu poza finală (deja corectată separat, în takePhoto()).
-        viewfinder.classList.toggle('unmirror', facingMode === 'user')
+        viewfinder.classList.toggle(
+            'unmirror',
+            facingMode === 'user'
+        )
+
+        availableCameras = await getAvailableCameras()
+        renderCameraSelector()
+
     } catch (err) {
-        document.getElementById('message').textContent = 'Nu am putut accesa camera: ' + err.message
+        document.getElementById('message').textContent =
+            'Nu am putut accesa camera: ' + err.message
     }
 }
 
 function flipCamera() {
     // Toggle between front and back camera
-    facingMode = facingMode === "environment" ? "user" : "environment"
+    if (isRecording) {
+        document.getElementById('message').textContent =
+            'Oprește înregistrarea înainte să schimbi camera.'
+        return
+    }
+
+    facingMode = 
+        facingMode === 'environment' 
+            ? 'user' 
+            : 'environment'
+
+    selectedCameraId = null  // Reset selected camera to allow facingMode to take effect
+
     startCamera()
 }
 
