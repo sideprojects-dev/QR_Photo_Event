@@ -270,42 +270,189 @@ function flipCamera() {
 
 
 async function takePhoto() {
-    const video = document.getElementById('viewfinder')
-    const videoTrack = stream?.getVideoTracks()[0]
+    const currentVideoTrack = stream?.getVideoTracks()[0]
 
-    if (!videoTrack) {
+    if (!currentVideoTrack) {
         document.getElementById('message').textContent =
             'Camera nu este disponibilă.'
         return
     }
 
     try {
-        // Prefer real still-photo capture when supported.
-        if ('ImageCapture' in window) {
-            const imageCapture = new ImageCapture(videoTrack)
+        const photoBlob = await takeHighResolutionPhoto()
 
-            const blob = await imageCapture.takePhoto()
-
+        if (photoBlob) {
             capturedFile = new File(
-                [blob],
+                [photoBlob],
                 'photo.jpg',
                 {
-                    type: blob.type || 'image/jpeg'
+                    type: photoBlob.type || 'image/jpeg'
                 }
             )
 
-            showPhotoPreview(blob)
+            showPhotoPreview(photoBlob)
             return
         }
     } catch (err) {
         console.warn(
-            'ImageCapture nu a funcționat. Folosim fallback canvas:',
+            'Captura high-resolution a eșuat. Folosim fallback:',
             err
         )
     }
 
-    // Fallback for Safari/iOS or unsupported browsers.
-    takePhotoFromVideoFrame(video)
+    takePhotoFromVideoFrame(
+        document.getElementById('viewfinder')
+    )
+}
+
+async function takeHighResolutionPhoto() {
+    const videoConstraints = {
+        width: {
+            ideal: 4032
+        },
+
+        height: {
+            ideal: 3024
+        }
+    }
+
+    if (selectedCameraId) {
+        videoConstraints.deviceId = {
+            exact: selectedCameraId
+        }
+    } else {
+        videoConstraints.facingMode = {
+            ideal: facingMode
+        }
+    }
+
+    const photoStream =
+        await navigator.mediaDevices.getUserMedia({
+            video: videoConstraints,
+            audio: false
+        })
+
+    try {
+        const photoTrack =
+            photoStream.getVideoTracks()[0]
+
+        const settings =
+            photoTrack.getSettings()
+
+        console.log(
+            'Photo stream resolution:',
+            settings.width,
+            settings.height
+        )
+
+        const tempVideo =
+            document.createElement('video')
+
+        tempVideo.srcObject =
+            photoStream
+
+        tempVideo.playsInline =
+            true
+
+        tempVideo.muted =
+            true
+
+        await tempVideo.play()
+
+        await waitForVideoReady(tempVideo)
+
+        const canvas =
+            document.createElement('canvas')
+
+        canvas.width =
+            tempVideo.videoWidth
+
+        canvas.height =
+            tempVideo.videoHeight
+
+        const ctx =
+            canvas.getContext('2d')
+
+        const shouldFlip =
+            facingMode === 'user'
+
+        if (shouldFlip) {
+            ctx.translate(
+                canvas.width,
+                0
+            )
+
+            ctx.scale(
+                -1,
+                1
+            )
+        }
+
+        ctx.drawImage(
+            tempVideo,
+            0,
+            0
+        )
+
+        return await canvasToBlob(
+            canvas,
+            'image/jpeg',
+            0.95
+        )
+
+    } finally {
+        photoStream
+            .getTracks()
+            .forEach(track => track.stop())
+    }
+}
+
+function waitForVideoReady(video) {
+    return new Promise(resolve => {
+        if (
+            video.readyState >= 2 &&
+            video.videoWidth > 0
+        ) {
+            resolve()
+            return
+        }
+
+        video.addEventListener(
+            'loadeddata',
+            () => resolve(),
+            {
+                once: true
+            }
+        )
+    })
+}
+
+function canvasToBlob(
+    canvas,
+    type,
+    quality
+) {
+    return new Promise(
+        (resolve, reject) => {
+            canvas.toBlob(
+                blob => {
+                    if (!blob) {
+                        reject(
+                            new Error(
+                                'Nu am putut crea fotografia.'
+                            )
+                        )
+                        return
+                    }
+
+                    resolve(blob)
+                },
+
+                type,
+                quality
+            )
+        }
+    )
 }
 
 function takePhotoFromVideoFrame(video) {
