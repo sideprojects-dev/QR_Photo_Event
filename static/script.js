@@ -17,6 +17,29 @@ async function getAvailableCameras() {
     return devices.filter(device => device.kind === 'videoinput')
 }
 
+function debugLog(message, data = null) {
+    let panel = document.getElementById('debugPanel')
+
+    if (!panel) {
+        panel = document.createElement('pre')
+        panel.id = 'debugPanel'
+        panel.style.whiteSpace = 'pre-wrap'
+        panel.style.fontSize = '12px'
+        panel.style.background = '#111'
+        panel.style.color = '#0f0'
+        panel.style.padding = '10px'
+        panel.style.marginTop = '10px'
+        panel.style.borderRadius = '6px'
+
+        document.body.appendChild(panel)
+    }
+
+    const text = data
+        ? `${message}\n${JSON.stringify(data, null, 2)}`
+        : message
+
+    panel.textContent += text + '\n\n'
+}
 
 function getCameraDisplayName(camera, index) {
     const label = camera.label.trim()
@@ -167,6 +190,15 @@ function renderCameraSelector() {
     }))
 )
 
+    debugLog(
+    'Camere disponibile:',
+    availableCameras.map(camera => ({
+        label: camera.label,
+        type: getCameraType(camera),
+        deviceId: camera.deviceId
+    }))
+)
+
     const selectableCameras = availableCameras
         .map(camera => ({
             camera,
@@ -212,11 +244,14 @@ async function selectCamera(deviceId) {
         return
     }
 
-    if (deviceId === selectedCameraId) {
-        return
-    }
+    const selectedCamera = availableCameras.find(
+    camera => camera.deviceId === deviceId
+)
 
-    selectedCameraId = deviceId
+debugLog('Camera selectată:', {
+    label: selectedCamera?.label,
+    deviceId: selectedCamera?.deviceId
+})
 
     await startCamera()
 }
