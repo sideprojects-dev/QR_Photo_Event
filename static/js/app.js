@@ -1,19 +1,20 @@
 import { startCamera, flipCamera } from './camera.js?v=5'
-import { takePhoto } from './photo.js?v=5'
-import { toggleVideo } from './video.js?v=5'
-import { sendFile } from './upload.js?v=5'
+import { takePhoto } from './photo.js?v=6'
+import { toggleVideo } from './video.js?v=6'
+import { sendFile, retakeCapture } from './upload.js?v=6'
 
 import {
     loadGallery,
     loadMoreGallery,
     closeGalleryModal,
     bindGalleryModalEvents
-} from './gallery.js?v=5'
+} from './gallery.js?v=6'
 
 function bindControls() {
     document.getElementById('btnFlip')?.addEventListener('click', flipCamera)
     document.getElementById('btnCapture')?.addEventListener('click', takePhoto)
     document.getElementById('btnRecord')?.addEventListener('click', toggleVideo)
+    document.getElementById('btnRetake')?.addEventListener('click', retakeCapture)
     document.getElementById('btnSend')?.addEventListener('click', sendFile)
     document.getElementById('btnLoadMore')?.addEventListener('click', loadMoreGallery)
     document.getElementById('btnCloseGallery')?.addEventListener('click', closeGalleryModal)

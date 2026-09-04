@@ -19,21 +19,46 @@
 
     <div class="media-frame">
       <video id="viewfinder" autoplay playsinline muted></video>
-      <img id="preview" alt="previzualizare">
+      <img id="preview" alt="Previzualizare fotografie">
       <video id="previewVideo" controls playsinline></video>
     </div>
 
     <div id="cameraSelector" class="camera-selector" hidden></div>
 
     <div class="controls">
-      <button class="btn btn-outline" id="btnFlip" type="button">Schimbă camera</button>
+      <div id="cameraControls" class="camera-controls">
+        <button class="btn btn-outline" id="btnFlip" type="button">
+          Schimbă camera
+        </button>
 
-      <div class="capture-row">
-        <button class="btn btn-primary" id="btnCapture" type="button">Fotografie</button>
-        <button class="btn btn-accent" id="btnRecord" type="button">Video</button>
+        <div class="capture-row">
+          <button class="btn btn-primary" id="btnCapture" type="button">
+            Fotografie
+          </button>
+          <button class="btn btn-accent" id="btnRecord" type="button">
+            Video
+          </button>
+        </div>
       </div>
 
-      <button class="btn btn-send" id="btnSend" type="button">Trimite</button>
+      <div id="capturedActions" class="captured-actions">
+        <button class="btn btn-outline" id="btnRetake" type="button">
+          Refă
+        </button>
+        <button class="btn btn-send" id="btnSend" type="button">
+          Trimite
+        </button>
+      </div>
+    </div>
+
+    <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
+      <div class="upload-progress-row">
+        <span id="uploadProgressLabel">Se încarcă...</span>
+        <strong id="uploadProgressPercent">0%</strong>
+      </div>
+      <div class="upload-progress-track" aria-hidden="true">
+        <div id="uploadProgressBar" class="upload-progress-bar"></div>
+      </div>
     </div>
 
     <p id="message"></p>
@@ -48,7 +73,9 @@
 
       <div id="galleryGrid" class="gallery-grid"></div>
 
-      <p id="galleryEmpty" class="gallery-empty">Nu există încă fotografii sau videoclipuri.</p>
+      <p id="galleryEmpty" class="gallery-empty">
+        Nu există încă fotografii sau videoclipuri.
+      </p>
       <p id="galleryMessage" class="gallery-message"></p>
 
       <button class="btn btn-outline gallery-load-more" id="btnLoadMore" type="button">
@@ -59,11 +86,22 @@
   </div>
 
   <div id="galleryModal" class="gallery-modal" aria-hidden="true">
-    <button class="gallery-modal-close" id="btnCloseGallery" type="button" aria-label="Închide">×</button>
+    <button
+      class="gallery-modal-close"
+      id="btnCloseGallery"
+      type="button"
+      aria-label="Închide"
+    >×</button>
 
     <div class="gallery-modal-content">
+      <div id="galleryModalLoading" class="gallery-modal-loading">
+        Se încarcă...
+      </div>
       <img id="galleryModalImage" alt="Fotografie din galerie">
       <video id="galleryModalVideo" controls playsinline></video>
+      <a id="galleryDownload" class="gallery-download" href="#">
+        Descarcă originalul
+      </a>
     </div>
   </div>
 </body>

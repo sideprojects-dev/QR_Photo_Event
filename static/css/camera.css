@@ -10,15 +10,22 @@
 #viewfinder,
 #preview,
 #previewVideo {
-  display: block;
   width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
   background: #000;
 }
 
+#viewfinder {
+  display: block;
+}
+
 #preview,
 #previewVideo {
+  display: none;
+}
+
+body.capture-ready #viewfinder {
   display: none;
 }
 
@@ -33,7 +40,7 @@
   flex-wrap: wrap;
 }
 
-.camera-selector[hidden] {
+body.capture-ready .camera-selector {
   display: none;
 }
 
@@ -62,11 +69,35 @@
   gap: 10px;
 }
 
-.capture-row {
+.camera-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+body.capture-ready .camera-controls {
+  display: none;
+}
+
+.capture-row,
+.captured-actions {
   display: flex;
   gap: 10px;
 }
 
-.capture-row .btn {
+.capture-row .btn,
+.captured-actions .btn {
   flex: 1;
+}
+
+.captured-actions {
+  display: none;
+}
+
+body.capture-ready .captured-actions {
+  display: flex;
+}
+
+body.uploading .captured-actions {
+  opacity: 0.9;
 }

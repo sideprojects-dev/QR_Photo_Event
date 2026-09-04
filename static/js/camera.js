@@ -85,7 +85,7 @@ export function getCameraDisplayName(type) {
         case 'main':
             return '1×'
         case 'tele':
-            return '2×'
+            return '5×'
         default:
             return 'Camera'
     }

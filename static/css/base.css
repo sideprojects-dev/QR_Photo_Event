@@ -16,13 +16,21 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }
 
 .page {
@@ -59,7 +67,9 @@ body {
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.05s ease, opacity 0.15s ease;
+  transition:
+    transform 0.05s ease,
+    opacity 0.15s ease;
 }
 
 .btn:active {
@@ -88,7 +98,6 @@ body {
 }
 
 .btn-send {
-  display: none;
   background: var(--text);
   color: #fff;
 }
@@ -98,7 +107,44 @@ body {
   text-align: center;
   font-size: 14px;
   color: var(--muted);
-  margin: 4px 0 0;
+  margin: 0;
+}
+
+.upload-progress {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.upload-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.upload-progress-row strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.upload-progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.18s ease;
 }
 
 @media (min-width: 700px) {

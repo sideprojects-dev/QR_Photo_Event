@@ -1,18 +1,44 @@
 import { state } from './state.js?v=5'
 
-export async function loadGallery(reset = false) {
-    const eventSlug = window.EVENT_SLUG
+export async function loadGallery(
+    reset = false
+) {
+    const eventSlug =
+        window.EVENT_SLUG
 
-    if (!eventSlug || state.galleryLoading) {
+    if (
+        !eventSlug ||
+        state.galleryLoading
+    ) {
         return
     }
 
-    const grid = document.getElementById('galleryGrid')
-    const emptyState = document.getElementById('galleryEmpty')
-    const message = document.getElementById('galleryMessage')
-    const loadMoreButton = document.getElementById('btnLoadMore')
+    const grid =
+        document.getElementById(
+            'galleryGrid'
+        )
 
-    if (!grid || !emptyState || !message || !loadMoreButton) {
+    const emptyState =
+        document.getElementById(
+            'galleryEmpty'
+        )
+
+    const message =
+        document.getElementById(
+            'galleryMessage'
+        )
+
+    const loadMoreButton =
+        document.getElementById(
+            'btnLoadMore'
+        )
+
+    if (
+        !grid ||
+        !emptyState ||
+        !message ||
+        !loadMoreButton
+    ) {
         return
     }
 
@@ -24,14 +50,25 @@ export async function loadGallery(reset = false) {
 
     state.galleryLoading = true
     loadMoreButton.disabled = true
-    message.textContent = 'Se încarcă galeria...'
+    message.textContent =
+        'Se încarcă galeria...'
 
     try {
-        const response = await fetch(
-            `/api/events/${encodeURIComponent(eventSlug)}/media?limit=${state.galleryPageSize}&offset=${state.galleryOffset}`
-        )
+        const response =
+            await fetch(
+                `/api/events/${
+                    encodeURIComponent(
+                        eventSlug
+                    )
+                }/media?limit=${
+                    state.galleryPageSize
+                }&offset=${
+                    state.galleryOffset
+                }`
+            )
 
-        const data = await response.json()
+        const data =
+            await response.json()
 
         if (!response.ok) {
             throw new Error(
@@ -41,25 +78,45 @@ export async function loadGallery(reset = false) {
             )
         }
 
-        const items = Array.isArray(data.items) ? data.items : []
+        const items =
+            Array.isArray(data.items)
+                ? data.items
+                : []
+
         renderGalleryItems(items)
 
-        state.galleryHasMore = Boolean(data.pagination?.has_more)
+        state.galleryHasMore =
+            Boolean(
+                data.pagination?.has_more
+            )
+
         state.galleryOffset =
             data.pagination?.next_offset ??
-            (state.galleryOffset + items.length)
+            (
+                state.galleryOffset +
+                items.length
+            )
 
         emptyState.style.display =
-            grid.children.length === 0 ? 'block' : 'none'
+            grid.children.length === 0
+                ? 'block'
+                : 'none'
 
         loadMoreButton.style.display =
-            state.galleryHasMore ? 'block' : 'none'
+            state.galleryHasMore
+                ? 'block'
+                : 'none'
 
         message.textContent = ''
+
     } catch (err) {
         message.textContent =
-            'Nu am putut încărca galeria: ' + err.message
-        loadMoreButton.style.display = 'none'
+            'Nu am putut încărca galeria: ' +
+            err.message
+
+        loadMoreButton.style.display =
+            'none'
+
     } finally {
         state.galleryLoading = false
         loadMoreButton.disabled = false
@@ -67,99 +124,319 @@ export async function loadGallery(reset = false) {
 }
 
 function renderGalleryItems(items) {
-    const grid = document.getElementById('galleryGrid')
+    const grid =
+        document.getElementById(
+            'galleryGrid'
+        )
 
     if (!grid) {
         return
     }
 
-    items.forEach(item => {
-        grid.appendChild(createGalleryItem(item))
-    })
+    items.forEach(
+        item => {
+            grid.appendChild(
+                createGalleryItem(item)
+            )
+        }
+    )
 }
 
 function createGalleryItem(item) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'gallery-item'
+    const container =
+        document.createElement('div')
 
-    const isVideo = item.content_type?.startsWith('video/')
+    container.className =
+        'gallery-item'
+
+    const openButton =
+        document.createElement('button')
+
+    openButton.type = 'button'
+    openButton.className =
+        'gallery-open'
+
+    const isVideo =
+        item.content_type?.startsWith(
+            'video/'
+        )
 
     if (isVideo) {
-        const videoPlaceholder = document.createElement('div')
-        videoPlaceholder.className = 'gallery-video-placeholder'
+        const videoPlaceholder =
+            document.createElement('div')
 
-        const playIcon = document.createElement('span')
-        playIcon.className = 'gallery-play-icon'
+        videoPlaceholder.className =
+            'gallery-video-placeholder'
+
+        const playIcon =
+            document.createElement('span')
+
+        playIcon.className =
+            'gallery-play-icon'
+
         playIcon.textContent = '▶'
 
-        const label = document.createElement('span')
-        label.className = 'gallery-video-label'
+        const label =
+            document.createElement('span')
+
+        label.className =
+            'gallery-video-label'
+
         label.textContent = 'Video'
 
-        videoPlaceholder.appendChild(playIcon)
-        videoPlaceholder.appendChild(label)
-        button.appendChild(videoPlaceholder)
+        videoPlaceholder.appendChild(
+            playIcon
+        )
+
+        videoPlaceholder.appendChild(
+            label
+        )
+
+        openButton.appendChild(
+            videoPlaceholder
+        )
     } else {
-        const image = document.createElement('img')
-        image.src = `/media/${encodeURIComponent(item.id)}/thumbnail`
-        image.alt = 'Fotografie din galerie'
+        const image =
+            document.createElement('img')
+
+        image.src =
+            `/media/${
+                encodeURIComponent(
+                    item.id
+                )
+            }/thumbnail`
+
+        image.alt =
+            'Fotografie din galerie'
+
         image.loading = 'lazy'
-        button.appendChild(image)
+
+        openButton.appendChild(image)
     }
 
-    button.addEventListener('click', () => openGalleryModal(item))
-    return button
+    openButton.addEventListener(
+        'click',
+        () => openGalleryModal(item)
+    )
+
+    const downloadLink =
+        document.createElement('a')
+
+    downloadLink.className =
+        'gallery-item-download'
+
+    downloadLink.href =
+        `/media/${
+            encodeURIComponent(
+                item.id
+            )
+        }/download`
+
+    downloadLink.setAttribute(
+        'aria-label',
+        isVideo
+            ? 'Descarcă videoclipul'
+            : 'Descarcă fotografia'
+    )
+
+    downloadLink.title =
+        'Descarcă originalul'
+
+    downloadLink.textContent = '↓'
+
+    container.appendChild(
+        openButton
+    )
+
+    container.appendChild(
+        downloadLink
+    )
+
+    return container
 }
 
 export function openGalleryModal(item) {
-    const modal = document.getElementById('galleryModal')
-    const image = document.getElementById('galleryModalImage')
-    const video = document.getElementById('galleryModalVideo')
+    const modal =
+        document.getElementById(
+            'galleryModal'
+        )
 
-    if (!modal || !image || !video) {
+    const image =
+        document.getElementById(
+            'galleryModalImage'
+        )
+
+    const video =
+        document.getElementById(
+            'galleryModalVideo'
+        )
+
+    const loading =
+        document.getElementById(
+            'galleryModalLoading'
+        )
+
+    const downloadLink =
+        document.getElementById(
+            'galleryDownload'
+        )
+
+    if (
+        !modal ||
+        !image ||
+        !video
+    ) {
         return
     }
 
-    const mediaUrl = `/media/${encodeURIComponent(item.id)}`
-    const isVideo = item.content_type?.startsWith('video/')
+    const encodedId =
+        encodeURIComponent(item.id)
 
-    image.style.display = isVideo ? 'none' : 'block'
-    video.style.display = isVideo ? 'block' : 'none'
+    const originalUrl =
+        `/media/${encodedId}`
+
+    const previewUrl =
+        `/media/${encodedId}/preview`
+
+    const downloadUrl =
+        `/media/${encodedId}/download`
+
+    const isVideo =
+        item.content_type?.startsWith(
+            'video/'
+        )
+
+    if (downloadLink) {
+        downloadLink.href =
+            downloadUrl
+    }
+
+    if (loading) {
+        loading.style.display =
+            'block'
+    }
+
+    image.style.display = 'none'
+    video.style.display = 'none'
 
     if (isVideo) {
-        image.src = ''
-        video.src = mediaUrl
+        image.removeAttribute('src')
+
+        video.src =
+            originalUrl
+
+        const onVideoReady = () => {
+            if (loading) {
+                loading.style.display =
+                    'none'
+            }
+
+            video.style.display =
+                'block'
+        }
+
+        video.addEventListener(
+            'loadedmetadata',
+            onVideoReady,
+            { once: true }
+        )
+
         video.load()
+
     } else {
         video.pause()
         video.removeAttribute('src')
         video.load()
-        image.src = mediaUrl
+
+        image.onload = () => {
+            if (loading) {
+                loading.style.display =
+                    'none'
+            }
+
+            image.style.display =
+                'block'
+        }
+
+        image.onerror = () => {
+            if (loading) {
+                loading.textContent =
+                    'Nu am putut încărca fotografia.'
+            }
+        }
+
+        image.src =
+            previewUrl
     }
 
     modal.classList.add('is-open')
-    modal.setAttribute('aria-hidden', 'false')
-    document.body.classList.add('modal-open')
+    modal.setAttribute(
+        'aria-hidden',
+        'false'
+    )
+
+    document.body.classList.add(
+        'modal-open'
+    )
 }
 
 export function closeGalleryModal() {
-    const modal = document.getElementById('galleryModal')
-    const image = document.getElementById('galleryModalImage')
-    const video = document.getElementById('galleryModalVideo')
+    const modal =
+        document.getElementById(
+            'galleryModal'
+        )
 
-    if (!modal || !image || !video) {
+    const image =
+        document.getElementById(
+            'galleryModalImage'
+        )
+
+    const video =
+        document.getElementById(
+            'galleryModalVideo'
+        )
+
+    const loading =
+        document.getElementById(
+            'galleryModalLoading'
+        )
+
+    if (
+        !modal ||
+        !image ||
+        !video
+    ) {
         return
     }
 
     video.pause()
     video.removeAttribute('src')
     video.load()
-    image.src = ''
 
-    modal.classList.remove('is-open')
-    modal.setAttribute('aria-hidden', 'true')
-    document.body.classList.remove('modal-open')
+    image.removeAttribute('src')
+    image.onload = null
+    image.onerror = null
+
+    if (loading) {
+        loading.textContent =
+            'Se încarcă...'
+
+        loading.style.display =
+            'block'
+    }
+
+    modal.classList.remove(
+        'is-open'
+    )
+
+    modal.setAttribute(
+        'aria-hidden',
+        'true'
+    )
+
+    document.body.classList.remove(
+        'modal-open'
+    )
 }
 
 export async function loadMoreGallery() {
@@ -171,17 +448,26 @@ export async function loadMoreGallery() {
 }
 
 export function bindGalleryModalEvents() {
-    const modal = document.getElementById('galleryModal')
+    const modal =
+        document.getElementById(
+            'galleryModal'
+        )
 
-    modal?.addEventListener('click', event => {
-        if (event.target === modal) {
-            closeGalleryModal()
+    modal?.addEventListener(
+        'click',
+        event => {
+            if (event.target === modal) {
+                closeGalleryModal()
+            }
         }
-    })
+    )
 
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
-            closeGalleryModal()
+    document.addEventListener(
+        'keydown',
+        event => {
+            if (event.key === 'Escape') {
+                closeGalleryModal()
+            }
         }
-    })
+    )
 }
