@@ -183,6 +183,10 @@ async function takeHighResolutionPhoto(
         await tempVideo.play()
         await waitForVideoReady(tempVideo)
 
+        // Lăsăm câteva cadre pentru auto-expunere / white balance.
+        // Unele telefoane livrează primul cadru high-resolution puțin mai întunecat.
+        await waitForCameraExposure(tempVideo)
+
         const canvas =
             document.createElement('canvas')
 
@@ -260,6 +264,35 @@ function drawVideoFrameToCanvas(
         canvas.width,
         canvas.height
     )
+}
+
+async function waitForCameraExposure(video) {
+    if (typeof video.requestVideoFrameCallback === 'function') {
+        await new Promise(resolve => {
+            let remainingFrames = 10
+
+            const waitNextFrame = () => {
+                video.requestVideoFrameCallback(() => {
+                    remainingFrames -= 1
+
+                    if (remainingFrames <= 0) {
+                        resolve()
+                        return
+                    }
+
+                    waitNextFrame()
+                })
+            }
+
+            waitNextFrame()
+        })
+
+        return
+    }
+
+    await new Promise(resolve => {
+        setTimeout(resolve, 650)
+    })
 }
 
 function waitForVideoReady(video) {
