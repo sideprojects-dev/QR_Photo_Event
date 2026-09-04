@@ -1,5 +1,8 @@
+import io
+
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+import qrcode
 
 from config import FOLDER_ID
 from deps import get_supabase, require_admin
@@ -182,3 +185,38 @@ def get_location_events(location_slug: str):
         "location": location,
         "events": events_result.data
     }
+
+
+@router.get("/api/locations/{location_slug}/master-qr", dependencies=[Depends(require_admin)])
+def get_location_master_qr(location_slug: str):
+    supabase = get_supabase()
+
+    location_result = (
+        supabase
+        .table("locations")
+        .select("id")
+        .eq("slug", location_slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not location_result.data:
+        raise HTTPException(status_code=404, detail="Locația nu a fost găsită.")
+
+    # QR-ul conține URL-ul permanent /event/master/{location_slug} — nu
+    # depinde de niciun eveniment anume, deci nu se schimbă niciodată.
+    url = f"https://qr-photo-event.onrender.com/event/master/{location_slug}"
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="image/png",
+        headers={"Content-Disposition": f"attachment; filename={location_slug}_master_qr.png"}
+    )
