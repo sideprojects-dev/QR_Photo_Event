@@ -5,12 +5,12 @@ import {
     flipCamera
 } from './camera.js?v=7'
 
-import { takePhoto } from './photo.js?v=10'
+import { takePhoto } from './photo.js?v=8'
 
 import {
     toggleVideo,
     stopRecordingForBackground
-} from './video.js?v=8'
+} from './video.js?v=7'
 
 import {
     sendFile,
