@@ -4,78 +4,27 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Header
 from fastapi.responses import StreamingResponse
 from googleapiclient.http import MediaIoBaseDownload
-from google_auth_oauthlib.flow import Flow
 from datetime import datetime
 import io as io_module
 import os
 import uuid
-import tempfile
 import qrcode
 
-from config import FOLDER_ID, ADMIN_PASSWORD, SCOPES
+from config import FOLDER_ID, ADMIN_PASSWORD
 from deps import get_supabase
 from google_drive import get_drive_service, upload_file_to_drive
+from routers import auth
 
 
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(auth.router)
 
 @app.get("/")
 def home():
     with open("static/index.html", "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
-
-@app.get("/auth/login")
-def auth_login():
-    # Write client_secret to a temp file (Flow requires a file)
-    client_secret = os.getenv("client_secret.json")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        f.write(client_secret)
-        temp_path = f.name
-
-    flow = Flow.from_client_secrets_file(
-        temp_path,
-        scopes=SCOPES,
-        redirect_uri=os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
-    )
-    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
-
-    with open("code_verifier.txt", "w") as f:
-        f.write(flow.code_verifier or "")
-
-    os.unlink(temp_path)
-    return RedirectResponse(auth_url)
-
-@app.get("/auth/callback")
-def auth_callback(code: str, state: str = None):
-    client_secret = os.getenv("client_secret.json")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        f.write(client_secret)
-        temp_path = f.name
-
-    flow = Flow.from_client_secrets_file(
-        temp_path,
-        scopes=SCOPES,
-        redirect_uri=os.getenv("REDIRECT_URI", "http://localhost:8000/auth/callback")
-    )
-
-    with open("code_verifier.txt", "r") as f:
-        flow.code_verifier = f.read().strip() or None
-
-    flow.fetch_token(code=code)
-
-    new_token_json = flow.credentials.to_json()
-
-    with open("token.json", "w", encoding="utf-8") as token_file:   
-        token_file.write(new_token_json)
-
-    os.unlink(temp_path)
-
-    if os.path.exists("code_verifier.txt"):
-        os.remove("code_verifier.txt")
-
-    return {"mesaj": "Successfully authenticated!"}
 
 def get_event_by_slug(supabase, slug: str):
     result = (
