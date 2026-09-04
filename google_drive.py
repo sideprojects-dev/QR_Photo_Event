@@ -192,3 +192,43 @@ def get_or_create_child_folder(
     )
 
     return created_folder["id"]
+
+def get_drive_file_size(
+    drive,
+    drive_file_id: str
+) -> int:
+    metadata = (
+        drive.files()
+        .get(
+            fileId=drive_file_id,
+            fields="size"
+        )
+        .execute()
+    )
+
+    size = metadata.get("size")
+
+    if size is None:
+        raise RuntimeError(
+            f"Google Drive did not return a size for file {drive_file_id}."
+        )
+
+    return int(size)
+
+
+def download_file_range(
+    drive,
+    drive_file_id: str,
+    start: int,
+    end: int
+) -> bytes:
+    request = drive.files().get_media(
+        fileId=drive_file_id
+    )
+
+    request.headers["Range"] = (
+        f"bytes={start}-{end}"
+    )
+
+    return request.execute()
+

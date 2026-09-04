@@ -3,14 +3,16 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi.responses import StreamingResponse, Response
 from googleapiclient.http import MediaIoBaseDownload
 from PIL import Image, ImageOps
 
 from deps import get_supabase
 from google_drive import (
     get_drive_service,
+    get_drive_file_size,
+    download_file_range,
     get_or_create_child_folder,
     upload_bytes_to_drive,
     upload_file_to_drive
@@ -356,8 +358,151 @@ def download_media(media_id: str):
     )
 
 
+
+
+def parse_byte_range(
+    range_header: str,
+    file_size: int
+) -> tuple[int, int]:
+    if not range_header.startswith("bytes="):
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header."
+        )
+
+    range_value = range_header.removeprefix("bytes=").strip()
+
+    if "," in range_value:
+        raise HTTPException(
+            status_code=416,
+            detail="Multiple ranges are not supported."
+        )
+
+    start_text, separator, end_text = range_value.partition("-")
+
+    if not separator:
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header."
+        )
+
+    try:
+        if start_text:
+            start = int(start_text)
+
+            if start < 0 or start >= file_size:
+                raise ValueError
+
+            if end_text:
+                end = int(end_text)
+            else:
+                end = file_size - 1
+        else:
+            # Suffix range, e.g. bytes=-500
+            suffix_length = int(end_text)
+
+            if suffix_length <= 0:
+                raise ValueError
+
+            suffix_length = min(
+                suffix_length,
+                file_size
+            )
+
+            start = file_size - suffix_length
+            end = file_size - 1
+
+        end = min(
+            end,
+            file_size - 1
+        )
+
+        if end < start:
+            raise ValueError
+
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range is not satisfiable.",
+            headers={
+                "Content-Range":
+                    f"bytes */{file_size}"
+            }
+        )
+
+    return start, end
+
+
+def stream_video_with_range(
+    request: Request,
+    drive,
+    media_record
+):
+    file_size = media_record.get(
+        "size_bytes"
+    )
+
+    if not file_size:
+        file_size = get_drive_file_size(
+            drive=drive,
+            drive_file_id=media_record["drive_file_id"]
+        )
+
+    file_size = int(file_size)
+    range_header = request.headers.get("range")
+
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition":
+            f'inline; filename="{media_record["file_name"]}"'
+    }
+
+    if not range_header:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=media_record["drive_file_id"],
+            media_type=media_record["content_type"],
+            cache_seconds=3600,
+            content_disposition=(
+                f'inline; filename="{media_record["file_name"]}"'
+            )
+        )
+
+    start, end = parse_byte_range(
+        range_header=range_header,
+        file_size=file_size
+    )
+
+    chunk = download_file_range(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        start=start,
+        end=end
+    )
+
+    headers = {
+        **common_headers,
+        "Content-Range":
+            f"bytes {start}-{end}/{file_size}",
+        "Content-Length":
+            str(len(chunk)),
+        "Cache-Control":
+            "public, max-age=3600"
+    }
+
+    return Response(
+        content=chunk,
+        status_code=206,
+        media_type=media_record["content_type"],
+        headers=headers
+    )
+
+
 @router.get("/media/{media_id}")
-def stream_media(media_id: str):
+def stream_media(
+    media_id: str,
+    request: Request
+):
     supabase = get_supabase()
     media_record = get_media_by_id(
         supabase=supabase,
@@ -365,6 +510,13 @@ def stream_media(media_id: str):
     )
 
     drive = get_drive_service()
+
+    if media_record["content_type"].startswith("video/"):
+        return stream_video_with_range(
+            request=request,
+            drive=drive,
+            media_record=media_record
+        )
 
     return stream_drive_file(
         drive=drive,
