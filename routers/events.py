@@ -15,64 +15,32 @@ router = APIRouter(tags=["events"])
 @router.get("/event/{slug}")
 def event_page(slug: str):
     supabase = get_supabase()
-
-    result = (
-        supabase
-        .table("events")
-        .select("*")
-        .eq("slug", slug)
-        .execute()
-    )
+    result = supabase.table("events").select("*").eq("slug", slug).execute()
 
     if not result.data:
-        return HTMLResponse(
-            "<h1>Eveniment negăsit</h1>",
-            status_code=404
-        )
+        return HTMLResponse("<h1>Eveniment negăsit</h1>", status_code=404)
 
-    with open(
-        "static/index.html",
-        "r",
-        encoding="utf-8"
-    ) as f:
+    with open("static/index.html", "r", encoding="utf-8") as f:
         html = f.read()
 
-    app_version = int(
-        os.path.getmtime("static/js/app.js")
-    )
-
+    # Fortarează browserul să ia mereu ultima versiune a scriptului prin adăugarea unui query param cu timestamp.
+    script_version = int(os.path.getmtime("static/script.js"))
     html = html.replace(
-        '<script type="module" src="/static/js/app.js"></script>',
-        f'<script type="module" src="/static/js/app.js?v={app_version}"></script>'
+        '<script src="/static/script.js"></script>',
+        f'<script src="/static/script.js?v={script_version}"></script>'
     )
 
-    css_files = [
-        "base.css",
-        "camera.css",
-        "gallery.css"
-    ]
-
-    for css_file in css_files:
-        css_path = f"static/css/{css_file}"
-        css_version = int(
-            os.path.getmtime(css_path)
-        )
-
-        html = html.replace(
-            f'href="/static/css/{css_file}"',
-            f'href="/static/css/{css_file}?v={css_version}"'
-        )
-
+    # Aceeași problemă poate apărea și la CSS: unele browsere încorporate
+    # (deschise prin scanarea QR-ului) țin în cache agresiv fișierele
+    # statice, inclusiv style.css.
+    style_version = int(os.path.getmtime("static/style.css"))
     html = html.replace(
-        "</body>",
-        f'''
-        <script>
-            window.EVENT_SLUG = "{slug}";
-        </script>
-        </body>
-        '''
+        '<link rel="stylesheet" href="/static/style.css">',
+        f'<link rel="stylesheet" href="/static/style.css?v={style_version}">'
     )
 
+    # Inject slug into page so JavaScript knows where to upload
+    html = html.replace("</body>", f'<script>window.EVENT_SLUG = "{slug}";</script></body>')
     return HTMLResponse(html)
 
 
