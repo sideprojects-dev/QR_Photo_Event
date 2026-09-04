@@ -1,6 +1,6 @@
-import { state } from './state.js'
-import { startCamera } from './camera.js'
-import { loadGallery } from './gallery.js'
+import { state } from './state.js?v=3'
+import { startCamera } from './camera.js?v=3'
+import { loadGallery } from './gallery.js?v=3'
 
 export async function sendFile() {
     if (!state.capturedFile) {

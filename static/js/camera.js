@@ -1,4 +1,4 @@
-import { state } from './state.js'
+import { state } from './state.js?v=3'
 
 export async function getAvailableCameras() {
     const devices = await navigator.mediaDevices.enumerateDevices()

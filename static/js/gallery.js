@@ -1,4 +1,4 @@
-import { state } from './state.js'
+import { state } from './state.js?v=3'
 
 export async function loadGallery(reset = false) {
     const eventSlug = window.EVENT_SLUG
@@ -102,7 +102,7 @@ function createGalleryItem(item) {
         button.appendChild(videoPlaceholder)
     } else {
         const image = document.createElement('img')
-        image.src = `/media/${encodeURIComponent(item.id)}`
+        image.src = `/media/${encodeURIComponent(item.id)}/thumbnail`
         image.alt = 'Fotografie din galerie'
         image.loading = 'lazy'
         button.appendChild(image)
