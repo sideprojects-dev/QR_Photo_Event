@@ -1,12 +1,15 @@
 import io as io_module
 import os
 import uuid
+import subprocess
+import tempfile
 from datetime import datetime
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import StreamingResponse, Response
 from googleapiclient.http import MediaIoBaseDownload
 from PIL import Image, ImageOps
+import imageio_ffmpeg
 
 from deps import get_supabase
 from google_drive import (
@@ -529,10 +532,87 @@ def stream_media(
     )
 
 
+
+
+def flip_front_camera_video(
+    input_bytes: bytes,
+    input_suffix: str
+) -> bytes:
+    ffmpeg_executable = imageio_ffmpeg.get_ffmpeg_exe()
+
+    safe_suffix = (
+        input_suffix
+        if input_suffix.lower() in {".mp4", ".mov", ".webm", ".mkv"}
+        else ".video"
+    )
+
+    input_path = None
+    output_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=safe_suffix,
+            delete=False
+        ) as input_file:
+            input_file.write(input_bytes)
+            input_path = input_file.name
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4",
+            delete=False
+        ) as output_file:
+            output_path = output_file.name
+
+        command = [
+            ffmpeg_executable,
+            "-y",
+            "-i", input_path,
+            "-vf", "hflip",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "18",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            output_path
+        ]
+
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=180,
+            check=False
+        )
+
+        if result.returncode != 0:
+            error_text = result.stderr.decode(
+                "utf-8",
+                errors="replace"
+            )
+
+            raise RuntimeError(
+                "FFmpeg video flip failed: "
+                + error_text[-2000:]
+            )
+
+        with open(output_path, "rb") as processed_file:
+            return processed_file.read()
+
+    finally:
+        for path in (input_path, output_path):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
 @router.post("/upload/{slug}")
 async def upload(
     slug: str,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    front_camera: bool = Form(False)
 ):
     if (
         not file.content_type
@@ -562,15 +642,61 @@ async def upload(
 
     await file.seek(0)
 
-    file_size = None
+    processed_video_bytes = None
 
-    try:
-        current_position = file.file.tell()
-        file.file.seek(0, os.SEEK_END)
-        file_size = file.file.tell()
-        file.file.seek(current_position)
-    except Exception:
-        file_size = None
+    if (
+        front_camera
+        and file.content_type
+        and file.content_type.startswith("video/")
+    ):
+        try:
+            input_bytes = await file.read()
+
+            processed_video_bytes = flip_front_camera_video(
+                input_bytes=input_bytes,
+                input_suffix=extension
+            )
+
+            extension = ".mp4"
+            unique_name = (
+                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                f"{uuid.uuid4().hex[:6]}{extension}"
+            )
+
+            file.content_type = "video/mp4"
+
+        except Exception as exc:
+            print(
+                "Front-camera video processing failed:",
+                repr(exc),
+                flush=True
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Nu am putut procesa videoclipul făcut "
+                    "cu camera frontală."
+                )
+            ) from exc
+
+        finally:
+            await file.seek(0)
+
+    file_size = (
+        len(processed_video_bytes)
+        if processed_video_bytes is not None
+        else None
+    )
+
+    if processed_video_bytes is None:
+        try:
+            current_position = file.file.tell()
+            file.file.seek(0, os.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(current_position)
+        except Exception:
+            file_size = None
 
     thumbnail_bytes = None
     preview_bytes = None
@@ -607,12 +733,21 @@ async def upload(
     preview_drive_file_id = None
 
     try:
-        drive_file_id = upload_file_to_drive(
-            drive=drive,
-            file=file,
-            file_name=unique_name,
-            folder_id=event["folder_id"]
-        )
+        if processed_video_bytes is not None:
+            drive_file_id = upload_bytes_to_drive(
+                drive=drive,
+                data=processed_video_bytes,
+                file_name=unique_name,
+                folder_id=event["folder_id"],
+                mimetype="video/mp4"
+            )
+        else:
+            drive_file_id = upload_file_to_drive(
+                drive=drive,
+                file=file,
+                file_name=unique_name,
+                folder_id=event["folder_id"]
+            )
 
         if thumbnail_bytes:
             try:

@@ -10,12 +10,12 @@ import { takePhoto } from './photo.js?v=11'
 import {
     toggleVideo,
     stopRecordingForBackground
-} from './video.js?v=7'
+} from './video.js?v=9'
 
 import {
     sendFile,
     retakeCapture
-} from './upload.js?v=7'
+} from './upload.js?v=8'
 
 import {
     loadGallery,

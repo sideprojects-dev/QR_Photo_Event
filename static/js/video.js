@@ -48,6 +48,8 @@ async function startRecording() {
     }
 
     state.recordedChunks = []
+    state.recordingWasFrontCamera =
+        state.facingMode === 'user'
 
     const mimeType =
         getSupportedVideoMimeType()
@@ -242,6 +244,11 @@ function buildRecordedVideo() {
             [blob],
             `video.${extension}`,
             { type: fileMimeType }
+        )
+
+    state.capturedFromFrontCamera =
+        Boolean(
+            state.recordingWasFrontCamera
         )
 
     const viewfinder =
