@@ -19,8 +19,13 @@ from google_drive import (
 router = APIRouter(tags=["media"])
 
 THUMBNAIL_FOLDER_NAME = "_thumbnails"
+PREVIEW_FOLDER_NAME = "_previews"
+
 THUMBNAIL_MAX_SIZE = (600, 600)
+PREVIEW_MAX_SIZE = (1600, 1600)
+
 THUMBNAIL_JPEG_QUALITY = 82
+PREVIEW_JPEG_QUALITY = 90
 
 
 def get_event_by_slug(supabase, slug: str):
@@ -47,6 +52,7 @@ def save_media_record(
     event_id: int,
     drive_file_id: str,
     thumbnail_drive_file_id: str | None,
+    preview_drive_file_id: str | None,
     file_name: str,
     content_type: str,
     size_bytes: int | None
@@ -58,6 +64,7 @@ def save_media_record(
             "event_id": event_id,
             "drive_file_id": drive_file_id,
             "thumbnail_drive_file_id": thumbnail_drive_file_id,
+            "preview_drive_file_id": preview_drive_file_id,
             "file_name": file_name,
             "content_type": content_type,
             "size_bytes": size_bytes
@@ -79,7 +86,8 @@ def get_event_media(
         .table("media")
         .select(
             "id, event_id, drive_file_id, thumbnail_drive_file_id, "
-            "file_name, content_type, size_bytes, created_at"
+            "preview_drive_file_id, file_name, content_type, "
+            "size_bytes, created_at"
         )
         .eq("event_id", event_id)
         .order("created_at", desc=True)
@@ -88,7 +96,6 @@ def get_event_media(
     )
 
     items = result.data or []
-
     has_more = len(items) > limit
 
     if has_more:
@@ -116,11 +123,7 @@ def get_event_media_endpoint(
         )
 
     supabase = get_supabase()
-
-    event = get_event_by_slug(
-        supabase=supabase,
-        slug=slug
-    )
+    event = get_event_by_slug(supabase, slug)
 
     items, has_more = get_event_media(
         supabase=supabase,
@@ -146,7 +149,8 @@ def get_media_by_id(supabase, media_id: str):
         .table("media")
         .select(
             "id, event_id, drive_file_id, thumbnail_drive_file_id, "
-            "file_name, content_type, size_bytes, created_at"
+            "preview_drive_file_id, file_name, content_type, "
+            "size_bytes, created_at"
         )
         .eq("id", media_id)
         .limit(1)
@@ -162,14 +166,18 @@ def get_media_by_id(supabase, media_id: str):
     return result.data[0]
 
 
-def create_image_thumbnail(file_bytes: bytes) -> bytes:
+def create_image_variant(
+    file_bytes: bytes,
+    max_size: tuple[int, int],
+    quality: int
+) -> bytes:
     input_buffer = io_module.BytesIO(file_bytes)
 
     with Image.open(input_buffer) as image:
         image = ImageOps.exif_transpose(image)
 
         image.thumbnail(
-            THUMBNAIL_MAX_SIZE,
+            max_size,
             Image.Resampling.LANCZOS
         )
 
@@ -181,15 +189,37 @@ def create_image_thumbnail(file_bytes: bytes) -> bytes:
         image.save(
             output_buffer,
             format="JPEG",
-            quality=THUMBNAIL_JPEG_QUALITY,
+            quality=quality,
             optimize=True
         )
 
         return output_buffer.getvalue()
 
 
-def download_drive_file_to_buffer(drive, drive_file_id: str):
-    request = drive.files().get_media(fileId=drive_file_id)
+def create_image_thumbnail(file_bytes: bytes) -> bytes:
+    return create_image_variant(
+        file_bytes=file_bytes,
+        max_size=THUMBNAIL_MAX_SIZE,
+        quality=THUMBNAIL_JPEG_QUALITY
+    )
+
+
+def create_image_preview(file_bytes: bytes) -> bytes:
+    return create_image_variant(
+        file_bytes=file_bytes,
+        max_size=PREVIEW_MAX_SIZE,
+        quality=PREVIEW_JPEG_QUALITY
+    )
+
+
+def download_drive_file_to_buffer(
+    drive,
+    drive_file_id: str
+):
+    request = drive.files().get_media(
+        fileId=drive_file_id
+    )
+
     buffer = io_module.BytesIO()
 
     downloader = MediaIoBaseDownload(
@@ -206,6 +236,33 @@ def download_drive_file_to_buffer(drive, drive_file_id: str):
     return buffer
 
 
+def stream_drive_file(
+    drive,
+    drive_file_id: str,
+    media_type: str,
+    cache_seconds: int,
+    content_disposition: str | None = None
+):
+    buffer = download_drive_file_to_buffer(
+        drive=drive,
+        drive_file_id=drive_file_id
+    )
+
+    headers = {
+        "Cache-Control":
+            f"public, max-age={cache_seconds}"
+    }
+
+    if content_disposition:
+        headers["Content-Disposition"] = content_disposition
+
+    return StreamingResponse(
+        buffer,
+        media_type=media_type,
+        headers=headers
+    )
+
+
 @router.get("/media/{media_id}/thumbnail")
 def stream_media_thumbnail(media_id: str):
     supabase = get_supabase()
@@ -220,29 +277,61 @@ def stream_media_thumbnail(media_id: str):
             detail="Thumbnail not available for this media."
         )
 
-    drive_file_id = (
-        media_record.get("thumbnail_drive_file_id")
-        or media_record["drive_file_id"]
-    )
-
-    media_type = (
-        "image/jpeg"
-        if media_record.get("thumbnail_drive_file_id")
-        else media_record["content_type"]
+    thumbnail_drive_file_id = media_record.get(
+        "thumbnail_drive_file_id"
     )
 
     drive = get_drive_service()
-    buffer = download_drive_file_to_buffer(
+
+    if thumbnail_drive_file_id:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=thumbnail_drive_file_id,
+            media_type="image/jpeg",
+            cache_seconds=86400
+        )
+
+    return stream_drive_file(
         drive=drive,
-        drive_file_id=drive_file_id
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"],
+        cache_seconds=3600
     )
 
-    return StreamingResponse(
-        buffer,
-        media_type=media_type,
-        headers={
-            "Cache-Control": "public, max-age=86400"
-        }
+
+@router.get("/media/{media_id}/preview")
+def stream_media_preview(media_id: str):
+    supabase = get_supabase()
+    media_record = get_media_by_id(
+        supabase=supabase,
+        media_id=media_id
+    )
+
+    if not media_record["content_type"].startswith("image/"):
+        raise HTTPException(
+            status_code=404,
+            detail="Preview not available for this media."
+        )
+
+    preview_drive_file_id = media_record.get(
+        "preview_drive_file_id"
+    )
+
+    drive = get_drive_service()
+
+    if preview_drive_file_id:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=preview_drive_file_id,
+            media_type="image/jpeg",
+            cache_seconds=86400
+        )
+
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"],
+        cache_seconds=3600
     )
 
 
@@ -255,18 +344,15 @@ def download_media(media_id: str):
     )
 
     drive = get_drive_service()
-    buffer = download_drive_file_to_buffer(
-        drive=drive,
-        drive_file_id=media_record["drive_file_id"]
-    )
 
-    return StreamingResponse(
-        buffer,
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
         media_type=media_record["content_type"],
-        headers={
-            "Content-Disposition":
-                f'attachment; filename="{media_record["file_name"]}"'
-        }
+        cache_seconds=3600,
+        content_disposition=(
+            f'attachment; filename="{media_record["file_name"]}"'
+        )
     )
 
 
@@ -279,19 +365,15 @@ def stream_media(media_id: str):
     )
 
     drive = get_drive_service()
-    buffer = download_drive_file_to_buffer(
-        drive=drive,
-        drive_file_id=media_record["drive_file_id"]
-    )
 
-    return StreamingResponse(
-        buffer,
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
         media_type=media_record["content_type"],
-        headers={
-            "Content-Disposition":
-                f'inline; filename="{media_record["file_name"]}"',
-            "Cache-Control": "public, max-age=3600"
-        }
+        cache_seconds=3600,
+        content_disposition=(
+            f'inline; filename="{media_record["file_name"]}"'
+        )
     )
 
 
@@ -302,7 +384,9 @@ async def upload(
 ):
     if (
         not file.content_type
-        or not file.content_type.startswith(("image/", "video/"))
+        or not file.content_type.startswith(
+            ("image/", "video/")
+        )
     ):
         raise HTTPException(
             status_code=400,
@@ -310,9 +394,14 @@ async def upload(
         )
 
     supabase = get_supabase()
-    event = get_event_by_slug(supabase, slug)
+    event = get_event_by_slug(
+        supabase,
+        slug
+    )
 
-    extension = os.path.splitext(file.filename or "")[1]
+    extension = os.path.splitext(
+        file.filename or ""
+    )[1]
 
     unique_name = (
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
@@ -332,6 +421,7 @@ async def upload(
         file_size = None
 
     thumbnail_bytes = None
+    preview_bytes = None
 
     if file.content_type.startswith("image/"):
         try:
@@ -341,9 +431,13 @@ async def upload(
             thumbnail_bytes = create_image_thumbnail(
                 image_bytes
             )
+
+            preview_bytes = create_image_preview(
+                image_bytes
+            )
         except Exception as exc:
             print(
-                "Thumbnail generation failed:",
+                "Image derivative generation failed:",
                 repr(exc),
                 "content_type:",
                 file.content_type,
@@ -355,8 +449,10 @@ async def upload(
             await file.seek(0)
 
     drive = get_drive_service()
+
     drive_file_id = None
     thumbnail_drive_file_id = None
+    preview_drive_file_id = None
 
     try:
         drive_file_id = upload_file_to_drive(
@@ -368,18 +464,25 @@ async def upload(
 
         if thumbnail_bytes:
             try:
-                thumbnail_folder_id = get_or_create_child_folder(
-                    drive=drive,
-                    parent_folder_id=event["folder_id"],
-                    folder_name=THUMBNAIL_FOLDER_NAME
+                thumbnail_folder_id = (
+                    get_or_create_child_folder(
+                        drive=drive,
+                        parent_folder_id=event["folder_id"],
+                        folder_name=THUMBNAIL_FOLDER_NAME
+                    )
                 )
 
-                thumbnail_drive_file_id = upload_bytes_to_drive(
-                    drive=drive,
-                    data=thumbnail_bytes,
-                    file_name=f"thumb_{os.path.splitext(unique_name)[0]}.jpg",
-                    folder_id=thumbnail_folder_id,
-                    mimetype="image/jpeg"
+                thumbnail_drive_file_id = (
+                    upload_bytes_to_drive(
+                        drive=drive,
+                        data=thumbnail_bytes,
+                        file_name=(
+                            "thumb_"
+                            f"{os.path.splitext(unique_name)[0]}.jpg"
+                        ),
+                        folder_id=thumbnail_folder_id,
+                        mimetype="image/jpeg"
+                    )
                 )
             except Exception as exc:
                 print(
@@ -387,31 +490,63 @@ async def upload(
                     repr(exc),
                     flush=True
                 )
-                thumbnail_drive_file_id = None
+
+        if preview_bytes:
+            try:
+                preview_folder_id = (
+                    get_or_create_child_folder(
+                        drive=drive,
+                        parent_folder_id=event["folder_id"],
+                        folder_name=PREVIEW_FOLDER_NAME
+                    )
+                )
+
+                preview_drive_file_id = (
+                    upload_bytes_to_drive(
+                        drive=drive,
+                        data=preview_bytes,
+                        file_name=(
+                            "preview_"
+                            f"{os.path.splitext(unique_name)[0]}.jpg"
+                        ),
+                        folder_id=preview_folder_id,
+                        mimetype="image/jpeg"
+                    )
+                )
+            except Exception as exc:
+                print(
+                    "Preview upload failed:",
+                    repr(exc),
+                    flush=True
+                )
 
         media_record = save_media_record(
             supabase=supabase,
             event_id=event["id"],
             drive_file_id=drive_file_id,
-            thumbnail_drive_file_id=thumbnail_drive_file_id,
+            thumbnail_drive_file_id=(
+                thumbnail_drive_file_id
+            ),
+            preview_drive_file_id=(
+                preview_drive_file_id
+            ),
             file_name=unique_name,
             content_type=file.content_type,
             size_bytes=file_size
         )
 
     except Exception:
-        if thumbnail_drive_file_id:
-            try:
-                drive.files().delete(
-                    fileId=thumbnail_drive_file_id
-                ).execute()
-            except Exception:
-                pass
+        for created_file_id in (
+            preview_drive_file_id,
+            thumbnail_drive_file_id,
+            drive_file_id
+        ):
+            if not created_file_id:
+                continue
 
-        if drive_file_id:
             try:
                 drive.files().delete(
-                    fileId=drive_file_id
+                    fileId=created_file_id
                 ).execute()
             except Exception:
                 pass
@@ -422,7 +557,10 @@ async def upload(
         "success": True,
         "media": media_record or {
             "drive_file_id": drive_file_id,
-            "thumbnail_drive_file_id": thumbnail_drive_file_id,
+            "thumbnail_drive_file_id":
+                thumbnail_drive_file_id,
+            "preview_drive_file_id":
+                preview_drive_file_id,
             "file_name": unique_name,
             "content_type": file.content_type,
             "size_bytes": file_size

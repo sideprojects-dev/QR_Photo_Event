@@ -1,6 +1,7 @@
 import io as io_module
 import json
 import os
+import threading
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -10,29 +11,87 @@ from googleapiclient.http import MediaIoBaseUpload
 from config import SCOPES
 
 
-def get_drive_service():
-    creds = None
+_credentials_lock = threading.Lock()
+_cached_credentials = None
+_thread_local = threading.local()
 
+
+def _load_credentials_from_environment():
     token_json = os.getenv("token.json")
-    print(f"token_json exists: {bool(token_json)}")
 
-    if token_json:
-        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
-        print(f"creds valid: {creds.valid}, expired: {creds.expired}")
+    if not token_json:
+        raise RuntimeError(
+            "Google Drive credentials are missing. "
+            "Please authenticate at /auth/login."
+        )
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            print("Refreshing token...")
-            creds.refresh(Request())
-        else:
-            raise Exception("No valid credentials available. Please authenticate at /auth/login")
+    return Credentials.from_authorized_user_info(
+        json.loads(token_json),
+        SCOPES
+    )
 
-    service = build("drive", "v3", credentials=creds)
-    print(f"Drive service type: {type(service)}")
+
+def _get_valid_credentials():
+    global _cached_credentials
+
+    with _credentials_lock:
+        if _cached_credentials and _cached_credentials.valid:
+            return _cached_credentials
+
+        if _cached_credentials is None:
+            _cached_credentials = _load_credentials_from_environment()
+
+        if not _cached_credentials.valid:
+            if (
+                _cached_credentials.expired
+                and _cached_credentials.refresh_token
+            ):
+                _cached_credentials.refresh(Request())
+            else:
+                raise RuntimeError(
+                    "No valid Google Drive credentials available. "
+                    "Please authenticate at /auth/login."
+                )
+
+        return _cached_credentials
+
+
+def get_drive_service():
+    """
+    Returns one Drive client per worker thread while sharing the same
+    refreshed Credentials object.
+
+    This avoids refreshing the OAuth token on every media request and
+    avoids sharing one httplib2 client across multiple FastAPI threads.
+    """
+    credentials = _get_valid_credentials()
+
+    service = getattr(_thread_local, "drive_service", None)
+    service_credentials = getattr(
+        _thread_local,
+        "drive_credentials",
+        None
+    )
+
+    if service is None or service_credentials is not credentials:
+        service = build(
+            "drive",
+            "v3",
+            credentials=credentials,
+            cache_discovery=False
+        )
+        _thread_local.drive_service = service
+        _thread_local.drive_credentials = credentials
+
     return service
 
 
-def upload_file_to_drive(drive, file, file_name: str, folder_id: str):
+def upload_file_to_drive(
+    drive,
+    file,
+    file_name: str,
+    folder_id: str
+):
     file_metadata = {
         "name": file_name,
         "parents": [folder_id]
@@ -57,6 +116,7 @@ def upload_file_to_drive(drive, file, file_name: str, folder_id: str):
         _, response = request.next_chunk()
 
     return response["id"]
+
 
 def upload_bytes_to_drive(
     drive,
@@ -132,4 +192,3 @@ def get_or_create_child_folder(
     )
 
     return created_folder["id"]
-

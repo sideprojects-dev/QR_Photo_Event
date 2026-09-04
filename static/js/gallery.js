@@ -1,4 +1,4 @@
-import { state } from './state.js?v=3'
+import { state } from './state.js?v=4'
 
 export async function loadGallery(reset = false) {
     const eventSlug = window.EVENT_SLUG
@@ -116,26 +116,33 @@ export function openGalleryModal(item) {
     const modal = document.getElementById('galleryModal')
     const image = document.getElementById('galleryModalImage')
     const video = document.getElementById('galleryModalVideo')
+    const downloadLink = document.getElementById('galleryDownload')
 
     if (!modal || !image || !video) {
         return
     }
 
-    const mediaUrl = `/media/${encodeURIComponent(item.id)}`
+    const originalUrl = `/media/${encodeURIComponent(item.id)}`
+    const previewUrl = `/media/${encodeURIComponent(item.id)}/preview`
+    const downloadUrl = `/media/${encodeURIComponent(item.id)}/download`
     const isVideo = item.content_type?.startsWith('video/')
+
+    if (downloadLink) {
+        downloadLink.href = downloadUrl
+    }
 
     image.style.display = isVideo ? 'none' : 'block'
     video.style.display = isVideo ? 'block' : 'none'
 
     if (isVideo) {
         image.src = ''
-        video.src = mediaUrl
+        video.src = originalUrl
         video.load()
     } else {
         video.pause()
         video.removeAttribute('src')
         video.load()
-        image.src = mediaUrl
+        image.src = previewUrl
     }
 
     modal.classList.add('is-open')
@@ -147,6 +154,7 @@ export function closeGalleryModal() {
     const modal = document.getElementById('galleryModal')
     const image = document.getElementById('galleryModalImage')
     const video = document.getElementById('galleryModalVideo')
+    const downloadLink = document.getElementById('galleryDownload')
 
     if (!modal || !image || !video) {
         return
