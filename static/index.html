@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/script.js"></script>
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/camera.css">
+  <link rel="stylesheet" href="/static/css/gallery.css">
+  <script type="module" src="/static/js/app.js"></script>
   <title>Album Eveniment</title>
 </head>
 <body>
@@ -16,23 +18,22 @@
     </header>
 
     <div class="media-frame">
-      <!-- Live camera feed -->
       <video id="viewfinder" autoplay playsinline muted></video>
-
-      <!-- Preview after capture -->
       <img id="preview" alt="previzualizare">
-      <video id="previewVideo" controls></video>
+      <video id="previewVideo" controls playsinline></video>
     </div>
 
+    <div id="cameraSelector" class="camera-selector" hidden></div>
+
     <div class="controls">
-      <button class="btn btn-outline" id="btnFlip" onclick="flipCamera()">Schimbă camera</button>
+      <button class="btn btn-outline" id="btnFlip" type="button">Schimbă camera</button>
 
       <div class="capture-row">
-        <button class="btn btn-primary" id="btnCapture" onclick="takePhoto()">Fotografie</button>
-        <button class="btn btn-accent" id="btnRecord" onclick="toggleVideo()">Video</button>
+        <button class="btn btn-primary" id="btnCapture" type="button">Fotografie</button>
+        <button class="btn btn-accent" id="btnRecord" type="button">Video</button>
       </div>
 
-      <button class="btn btn-send" id="btnSend" onclick="sendFile()">Trimite</button>
+      <button class="btn btn-send" id="btnSend" type="button">Trimite</button>
     </div>
 
     <p id="message"></p>
@@ -50,7 +51,7 @@
       <p id="galleryEmpty" class="gallery-empty">Nu există încă fotografii sau videoclipuri.</p>
       <p id="galleryMessage" class="gallery-message"></p>
 
-      <button class="btn btn-outline gallery-load-more" id="btnLoadMore" type="button" onclick="loadMoreGallery()">
+      <button class="btn btn-outline gallery-load-more" id="btnLoadMore" type="button">
         Încarcă mai multe
       </button>
     </section>
@@ -58,9 +59,9 @@
   </div>
 
   <div id="galleryModal" class="gallery-modal" aria-hidden="true">
-    <button class="gallery-modal-close" type="button" aria-label="Închide" onclick="closeGalleryModal()">×</button>
+    <button class="gallery-modal-close" id="btnCloseGallery" type="button" aria-label="Închide">×</button>
 
-    <div class="gallery-modal-content" onclick="event.stopPropagation()">
+    <div class="gallery-modal-content">
       <img id="galleryModalImage" alt="Fotografie din galerie">
       <video id="galleryModalVideo" controls playsinline></video>
     </div>

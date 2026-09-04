@@ -1,0 +1,72 @@
+.media-frame {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+#viewfinder,
+#preview,
+#previewVideo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #000;
+}
+
+#preview,
+#previewVideo {
+  display: none;
+}
+
+#viewfinder.unmirror {
+  transform: scaleX(-1);
+}
+
+.camera-selector {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.camera-selector[hidden] {
+  display: none;
+}
+
+.camera-option {
+  appearance: none;
+  min-width: 52px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.camera-option.is-selected {
+  font-weight: 700;
+  opacity: 1;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.capture-row {
+  display: flex;
+  gap: 10px;
+}
+
+.capture-row .btn {
+  flex: 1;
+}
