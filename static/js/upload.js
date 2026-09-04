@@ -1,5 +1,5 @@
 import { state } from './state.js?v=5'
-import { startCamera } from './camera.js?v=5'
+import { startCamera } from './camera.js?v=7'
 import { loadGallery } from './gallery.js?v=6'
 
 export async function sendFile() {

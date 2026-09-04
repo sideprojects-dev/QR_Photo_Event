@@ -25,8 +25,6 @@ export function getCameraType(camera) {
         return 'front'
     }
 
-    // iOS exposes logical multi-camera devices as well as the physical lenses.
-    // Keep them out of the selector so the browser is less likely to switch lenses itself.
     if (
         label.includes('tripla') ||
         label.includes('triple') ||
@@ -36,9 +34,6 @@ export function getCameraType(camera) {
         return 'composite'
     }
 
-    // iOS + common Android labels for the ultra-wide / wide-angle physical lens.
-    // "wide" alone is included because some Android browsers expose the 0.5x lens
-    // simply as "Wide Camera" instead of "Ultra Wide Camera".
     if (
         label.includes('ultra-superangular') ||
         label.includes('ultra superangular') ||
@@ -151,9 +146,28 @@ export async function selectCamera(deviceId) {
     await startCamera()
 }
 
-export async function startCamera() {
+export function stopCamera() {
     if (state.stream) {
-        state.stream.getTracks().forEach(track => track.stop())
+        state.stream
+            .getTracks()
+            .forEach(track => track.stop())
+
+        state.stream = null
+    }
+
+    const viewfinder = document.getElementById('viewfinder')
+
+    if (viewfinder) {
+        viewfinder.srcObject = null
+    }
+}
+
+export async function startCamera({ withAudio = false } = {}) {
+    stopCamera()
+
+    // Nu repornim camera în background.
+    if (document.hidden) {
+        return
     }
 
     try {
@@ -171,7 +185,7 @@ export async function startCamera() {
 
         state.stream = await navigator.mediaDevices.getUserMedia({
             video: videoConstraints,
-            audio: true
+            audio: withAudio
         })
 
         const videoTrack = state.stream.getVideoTracks()[0]
@@ -187,7 +201,12 @@ export async function startCamera() {
 
         const viewfinder = document.getElementById('viewfinder')
         viewfinder.srcObject = state.stream
-        viewfinder.classList.toggle('unmirror', state.facingMode === 'user')
+
+        // Selfie preview: intentionally mirrored, like a normal front-camera preview.
+        viewfinder.classList.toggle(
+            'unmirror',
+            state.facingMode === 'user'
+        )
 
         state.availableCameras = await getAvailableCameras()
         renderCameraSelector()

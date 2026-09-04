@@ -1,4 +1,8 @@
 import { state } from './state.js?v=5'
+import {
+    startCamera,
+    stopCamera
+} from './camera.js?v=7'
 
 function getSupportedVideoMimeType() {
     const types = [
@@ -12,23 +16,33 @@ function getSupportedVideoMimeType() {
     return (
         types.find(
             type =>
-                MediaRecorder.isTypeSupported(type)
+                MediaRecorder.isTypeSupported(
+                    type
+                )
         ) || ''
     )
 }
 
-export function toggleVideo() {
+export async function toggleVideo() {
     if (!state.isRecording) {
-        startRecording()
+        await startRecording()
         return
     }
 
     stopRecording()
 }
 
-function startRecording() {
+async function startRecording() {
+    // Preview-ul foto nu mai ține microfonul pornit.
+    // Îl pornim doar când utilizatorul începe efectiv filmarea.
+    await startCamera({
+        withAudio: true
+    })
+
     if (!state.stream) {
-        document.getElementById('message').textContent =
+        document.getElementById(
+            'message'
+        ).textContent =
             'Camera nu este disponibilă.'
         return
     }
@@ -39,8 +53,10 @@ function startRecording() {
         getSupportedVideoMimeType()
 
     const recorderOptions = {
-        videoBitsPerSecond: 16000000,
-        audioBitsPerSecond: 128000
+        videoBitsPerSecond:
+            16000000,
+        audioBitsPerSecond:
+            128000
     }
 
     if (mimeType) {
@@ -69,6 +85,10 @@ function startRecording() {
                     event.error?.message ||
                     'eroare necunoscută'
                 )
+
+            state.isRecording = false
+            stopCamera()
+            resetRecordingButtons()
         }
 
     state.mediaRecorder.ondataavailable =
@@ -87,40 +107,108 @@ function startRecording() {
     state.isRecording = true
 
     const recordButton =
-        document.getElementById('btnRecord')
+        document.getElementById(
+            'btnRecord'
+        )
 
-    recordButton.textContent = 'Oprește'
+    recordButton.textContent =
+        'Oprește'
+
     recordButton.style.background =
         '#8f3720'
 
-    document.getElementById('btnCapture').disabled =
-        true
-    document.getElementById('btnFlip').disabled =
-        true
+    document.getElementById(
+        'btnCapture'
+    ).disabled = true
 
-    document.getElementById('message').textContent =
+    document.getElementById(
+        'btnFlip'
+    ).disabled = true
+
+    document.getElementById(
+        'message'
+    ).textContent =
         'Se înregistrează...'
 }
 
-function stopRecording() {
-    state.mediaRecorder.stop()
+export function stopRecording() {
+    if (
+        !state.mediaRecorder ||
+        state.mediaRecorder.state ===
+            'inactive'
+    ) {
+        state.isRecording = false
+        stopCamera()
+        resetRecordingButtons()
+        return
+    }
+
     state.isRecording = false
+    state.mediaRecorder.stop()
+    resetRecordingButtons()
+}
 
+export function stopRecordingForBackground() {
+    if (!state.isRecording) {
+        stopCamera()
+        return
+    }
+
+    try {
+        if (
+            state.mediaRecorder &&
+            state.mediaRecorder.state !==
+                'inactive'
+        ) {
+            state.mediaRecorder.stop()
+        }
+    } finally {
+        state.isRecording = false
+
+        // Oprim imediat hardware-ul când pagina ajunge în background.
+        stopCamera()
+        resetRecordingButtons()
+    }
+}
+
+function resetRecordingButtons() {
     const recordButton =
-        document.getElementById('btnRecord')
+        document.getElementById(
+            'btnRecord'
+        )
 
-    recordButton.textContent = 'Video'
-    recordButton.style.background = ''
+    if (recordButton) {
+        recordButton.textContent =
+            'Video'
 
-    document.getElementById('btnCapture').disabled =
-        false
-    document.getElementById('btnFlip').disabled =
-        false
+        recordButton.style.background =
+            ''
+    }
+
+    const captureButton =
+        document.getElementById(
+            'btnCapture'
+        )
+
+    const flipButton =
+        document.getElementById(
+            'btnFlip'
+        )
+
+    if (captureButton) {
+        captureButton.disabled =
+            false
+    }
+
+    if (flipButton) {
+        flipButton.disabled =
+            false
+    }
 }
 
 function buildRecordedVideo() {
     const recorderMimeType =
-        state.mediaRecorder.mimeType ||
+        state.mediaRecorder?.mimeType ||
         state.recordedChunks[0]?.type ||
         'video/webm'
 
@@ -138,6 +226,17 @@ function buildRecordedVideo() {
             { type: fileMimeType }
         )
 
+    if (blob.size === 0) {
+        stopCamera()
+
+        document.getElementById(
+            'message'
+        ).textContent =
+            'Înregistrarea nu conține date. Încearcă din nou.'
+
+        return
+    }
+
     state.capturedFile =
         new File(
             [blob],
@@ -146,13 +245,23 @@ function buildRecordedVideo() {
         )
 
     const viewfinder =
-        document.getElementById('viewfinder')
-    const preview =
-        document.getElementById('preview')
-    const previewVideo =
-        document.getElementById('previewVideo')
+        document.getElementById(
+            'viewfinder'
+        )
 
-    preview.style.display = 'none'
+    const preview =
+        document.getElementById(
+            'preview'
+        )
+
+    const previewVideo =
+        document.getElementById(
+            'previewVideo'
+        )
+
+    preview.style.display =
+        'none'
+
     preview.src = ''
 
     previewVideo.src =
@@ -167,6 +276,8 @@ function buildRecordedVideo() {
     document.body.classList.add(
         'capture-ready'
     )
+
+    stopCamera()
 
     document.getElementById(
         'message'

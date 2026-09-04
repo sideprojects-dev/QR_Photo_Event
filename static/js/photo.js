@@ -1,4 +1,5 @@
 import { state } from './state.js?v=5'
+import { stopCamera } from './camera.js?v=7'
 
 export async function takePhoto() {
     const currentVideoTrack = state.stream?.getVideoTracks()[0]
@@ -9,11 +10,26 @@ export async function takePhoto() {
         return
     }
 
+    // Reținem camera folosită chiar dacă stream-ul este oprit ulterior.
+    const shouldMirror =
+        state.facingMode === 'user'
+
     try {
-        const imageCaptureBlob = await takePhotoWithImageCapture(currentVideoTrack)
+        const imageCaptureBlob =
+            await takePhotoWithImageCapture(
+                currentVideoTrack
+            )
 
         if (imageCaptureBlob) {
-            setCapturedPhoto(imageCaptureBlob)
+            const normalizedBlob =
+                shouldMirror
+                    ? await mirrorImageBlob(
+                        imageCaptureBlob
+                    )
+                    : imageCaptureBlob
+
+            setCapturedPhoto(normalizedBlob)
+            stopCamera()
             return
         }
     } catch (err) {
@@ -24,10 +40,17 @@ export async function takePhoto() {
     }
 
     try {
-        const highResolutionBlob = await takeHighResolutionPhoto()
+        const highResolutionBlob =
+            await takeHighResolutionPhoto(
+                shouldMirror
+            )
 
         if (highResolutionBlob) {
-            setCapturedPhoto(highResolutionBlob)
+            setCapturedPhoto(
+                highResolutionBlob
+            )
+
+            stopCamera()
             return
         }
     } catch (err) {
@@ -37,9 +60,23 @@ export async function takePhoto() {
         )
     }
 
-    takePhotoFromVideoFrame(
-        document.getElementById('viewfinder')
-    )
+    try {
+        const fallbackBlob =
+            await takePhotoFromVideoFrame(
+                document.getElementById(
+                    'viewfinder'
+                ),
+                shouldMirror
+            )
+
+        setCapturedPhoto(fallbackBlob)
+    } catch (err) {
+        document.getElementById(
+            'message'
+        ).textContent = err.message
+    } finally {
+        stopCamera()
+    }
 }
 
 async function takePhotoWithImageCapture(videoTrack) {
@@ -47,13 +84,20 @@ async function takePhotoWithImageCapture(videoTrack) {
         return null
     }
 
-    const imageCapture = new ImageCapture(videoTrack)
+    const imageCapture =
+        new ImageCapture(videoTrack)
+
     let photoSettings = undefined
 
     try {
-        const capabilities = await imageCapture.getPhotoCapabilities()
-        const maxWidth = capabilities?.imageWidth?.max
-        const maxHeight = capabilities?.imageHeight?.max
+        const capabilities =
+            await imageCapture.getPhotoCapabilities()
+
+        const maxWidth =
+            capabilities?.imageWidth?.max
+
+        const maxHeight =
+            capabilities?.imageHeight?.max
 
         if (maxWidth && maxHeight) {
             photoSettings = {
@@ -68,10 +112,14 @@ async function takePhotoWithImageCapture(videoTrack) {
         )
     }
 
-    return imageCapture.takePhoto(photoSettings)
+    return imageCapture.takePhoto(
+        photoSettings
+    )
 }
 
-async function takeHighResolutionPhoto() {
+async function takeHighResolutionPhoto(
+    shouldMirror
+) {
     const videoConstraints = {
         width: { ideal: 4032 },
         height: { ideal: 3024 }
@@ -94,19 +142,32 @@ async function takeHighResolutionPhoto() {
         })
 
     try {
-        const tempVideo = document.createElement('video')
-        tempVideo.srcObject = photoStream
+        const tempVideo =
+            document.createElement('video')
+
+        tempVideo.srcObject =
+            photoStream
+
         tempVideo.playsInline = true
         tempVideo.muted = true
 
         await tempVideo.play()
         await waitForVideoReady(tempVideo)
 
-        const canvas = document.createElement('canvas')
-        canvas.width = tempVideo.videoWidth
-        canvas.height = tempVideo.videoHeight
+        const canvas =
+            document.createElement('canvas')
 
-        drawVideoFrameToCanvas(tempVideo, canvas)
+        canvas.width =
+            tempVideo.videoWidth
+
+        canvas.height =
+            tempVideo.videoHeight
+
+        drawVideoFrameToCanvas(
+            tempVideo,
+            canvas,
+            shouldMirror
+        )
 
         return canvasToBlob(
             canvas,
@@ -120,30 +181,136 @@ async function takeHighResolutionPhoto() {
     }
 }
 
-function takePhotoFromVideoFrame(video) {
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+async function takePhotoFromVideoFrame(
+    video,
+    shouldMirror
+) {
+    const canvas =
+        document.createElement('canvas')
 
-    drawVideoFrameToCanvas(video, canvas)
+    canvas.width =
+        video.videoWidth
 
-    canvasToBlob(canvas, 'image/jpeg', 0.95)
-        .then(setCapturedPhoto)
-        .catch(err => {
-            document.getElementById('message').textContent =
-                err.message
-        })
+    canvas.height =
+        video.videoHeight
+
+    drawVideoFrameToCanvas(
+        video,
+        canvas,
+        shouldMirror
+    )
+
+    return canvasToBlob(
+        canvas,
+        'image/jpeg',
+        0.95
+    )
 }
 
-function drawVideoFrameToCanvas(video, canvas) {
-    const ctx = canvas.getContext('2d')
+function drawVideoFrameToCanvas(
+    video,
+    canvas,
+    shouldMirror
+) {
+    const ctx =
+        canvas.getContext('2d')
 
-    if (state.facingMode === 'user') {
-        ctx.translate(canvas.width, 0)
+    if (shouldMirror) {
+        ctx.translate(
+            canvas.width,
+            0
+        )
+
         ctx.scale(-1, 1)
     }
 
-    ctx.drawImage(video, 0, 0)
+    ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+}
+
+async function mirrorImageBlob(blob) {
+    const image =
+        await loadImageFromBlob(blob)
+
+    const canvas =
+        document.createElement('canvas')
+
+    canvas.width =
+        image.naturalWidth ||
+        image.width
+
+    canvas.height =
+        image.naturalHeight ||
+        image.height
+
+    const ctx =
+        canvas.getContext('2d')
+
+    ctx.translate(
+        canvas.width,
+        0
+    )
+
+    ctx.scale(-1, 1)
+
+    ctx.drawImage(
+        image,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    const contentType =
+        blob.type &&
+        blob.type.startsWith('image/')
+            ? blob.type
+            : 'image/jpeg'
+
+    return canvasToBlob(
+        canvas,
+        contentType,
+        0.95
+    )
+}
+
+function loadImageFromBlob(blob) {
+    return new Promise(
+        (resolve, reject) => {
+            const image =
+                new Image()
+
+            const objectUrl =
+                URL.createObjectURL(blob)
+
+            image.onload = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                resolve(image)
+            }
+
+            image.onerror = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                reject(
+                    new Error(
+                        'Nu am putut procesa fotografia făcută cu camera frontală.'
+                    )
+                )
+            }
+
+            image.src = objectUrl
+        }
+    )
 }
 
 function waitForVideoReady(video) {
@@ -164,25 +331,31 @@ function waitForVideoReady(video) {
     })
 }
 
-function canvasToBlob(canvas, type, quality) {
-    return new Promise((resolve, reject) => {
-        canvas.toBlob(
-            blob => {
-                if (!blob) {
-                    reject(
-                        new Error(
-                            'Nu am putut crea fotografia.'
+function canvasToBlob(
+    canvas,
+    type,
+    quality
+) {
+    return new Promise(
+        (resolve, reject) => {
+            canvas.toBlob(
+                blob => {
+                    if (!blob) {
+                        reject(
+                            new Error(
+                                'Nu am putut crea fotografia.'
+                            )
                         )
-                    )
-                    return
-                }
+                        return
+                    }
 
-                resolve(blob)
-            },
-            type,
-            quality
-        )
-    })
+                    resolve(blob)
+                },
+                type,
+                quality
+            )
+        }
+    )
 }
 
 function setCapturedPhoto(blob) {
@@ -194,34 +367,55 @@ function setCapturedPhoto(blob) {
             ? 'png'
             : 'jpg'
 
-    state.capturedFile = new File(
-        [blob],
-        `photo.${extension}`,
-        { type: contentType }
-    )
+    state.capturedFile =
+        new File(
+            [blob],
+            `photo.${extension}`,
+            { type: contentType }
+        )
 
     showPhotoPreview(blob)
 }
 
 function showPhotoPreview(blob) {
     const viewfinder =
-        document.getElementById('viewfinder')
-    const preview =
-        document.getElementById('preview')
-    const previewVideo =
-        document.getElementById('previewVideo')
+        document.getElementById(
+            'viewfinder'
+        )
 
-    preview.src = URL.createObjectURL(blob)
-    preview.style.display = 'block'
+    const preview =
+        document.getElementById(
+            'preview'
+        )
+
+    const previewVideo =
+        document.getElementById(
+            'previewVideo'
+        )
+
+    preview.src =
+        URL.createObjectURL(blob)
+
+    preview.style.display =
+        'block'
 
     previewVideo.pause()
-    previewVideo.removeAttribute('src')
+    previewVideo.removeAttribute(
+        'src'
+    )
     previewVideo.load()
-    previewVideo.style.display = 'none'
+    previewVideo.style.display =
+        'none'
 
-    viewfinder.style.display = 'none'
-    document.body.classList.add('capture-ready')
+    viewfinder.style.display =
+        'none'
 
-    document.getElementById('message').textContent =
+    document.body.classList.add(
+        'capture-ready'
+    )
+
+    document.getElementById(
+        'message'
+    ).textContent =
         'Fotografia este gata. O poți trimite sau reface.'
 }
