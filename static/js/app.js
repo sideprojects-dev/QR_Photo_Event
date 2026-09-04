@@ -5,7 +5,7 @@ import {
     flipCamera
 } from './camera.js?v=7'
 
-import { takePhoto } from './photo.js?v=7'
+import { takePhoto } from './photo.js?v=8'
 
 import {
     toggleVideo,

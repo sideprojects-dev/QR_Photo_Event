@@ -14,6 +14,39 @@ export async function takePhoto() {
     const shouldMirror =
         state.facingMode === 'user'
 
+    // Pentru camera frontală folosim întotdeauna cadrul din stream-ul
+    // care alimentează preview-ul. Unele versiuni iOS/Safari întorc
+    // ImageCapture/high-resolution deja oglindit, altele nu. Dacă am
+    // oglindi acel blob din nou, rezultatul ar diferi între dispozitive.
+    //
+    // Cadrul video brut este predictibil: preview-ul este oglindit prin CSS,
+    // iar aici îl oglindim exact o singură dată în canvas, astfel încât poza
+    // salvată să arate la fel ca preview-ul selfie.
+    if (shouldMirror) {
+        try {
+            const frontCameraBlob =
+                await takePhotoFromVideoFrame(
+                    document.getElementById(
+                        'viewfinder'
+                    ),
+                    true
+                )
+
+            setCapturedPhoto(
+                frontCameraBlob
+            )
+        } catch (err) {
+            document.getElementById(
+                'message'
+            ).textContent = err.message
+        } finally {
+            stopCamera()
+        }
+
+        return
+    }
+
+    // Pentru camera din spate păstrăm captură high-resolution / ImageCapture.
     try {
         const imageCaptureBlob =
             await takePhotoWithImageCapture(
@@ -21,14 +54,10 @@ export async function takePhoto() {
             )
 
         if (imageCaptureBlob) {
-            const normalizedBlob =
-                shouldMirror
-                    ? await mirrorImageBlob(
-                        imageCaptureBlob
-                    )
-                    : imageCaptureBlob
+            setCapturedPhoto(
+                imageCaptureBlob
+            )
 
-            setCapturedPhoto(normalizedBlob)
             stopCamera()
             return
         }
@@ -42,7 +71,7 @@ export async function takePhoto() {
     try {
         const highResolutionBlob =
             await takeHighResolutionPhoto(
-                shouldMirror
+                false
             )
 
         if (highResolutionBlob) {
@@ -66,7 +95,7 @@ export async function takePhoto() {
                 document.getElementById(
                     'viewfinder'
                 ),
-                shouldMirror
+                false
             )
 
         setCapturedPhoto(fallbackBlob)
@@ -230,86 +259,6 @@ function drawVideoFrameToCanvas(
         0,
         canvas.width,
         canvas.height
-    )
-}
-
-async function mirrorImageBlob(blob) {
-    const image =
-        await loadImageFromBlob(blob)
-
-    const canvas =
-        document.createElement('canvas')
-
-    canvas.width =
-        image.naturalWidth ||
-        image.width
-
-    canvas.height =
-        image.naturalHeight ||
-        image.height
-
-    const ctx =
-        canvas.getContext('2d')
-
-    ctx.translate(
-        canvas.width,
-        0
-    )
-
-    ctx.scale(-1, 1)
-
-    ctx.drawImage(
-        image,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    )
-
-    const contentType =
-        blob.type &&
-        blob.type.startsWith('image/')
-            ? blob.type
-            : 'image/jpeg'
-
-    return canvasToBlob(
-        canvas,
-        contentType,
-        0.95
-    )
-}
-
-function loadImageFromBlob(blob) {
-    return new Promise(
-        (resolve, reject) => {
-            const image =
-                new Image()
-
-            const objectUrl =
-                URL.createObjectURL(blob)
-
-            image.onload = () => {
-                URL.revokeObjectURL(
-                    objectUrl
-                )
-
-                resolve(image)
-            }
-
-            image.onerror = () => {
-                URL.revokeObjectURL(
-                    objectUrl
-                )
-
-                reject(
-                    new Error(
-                        'Nu am putut procesa fotografia făcută cu camera frontală.'
-                    )
-                )
-            }
-
-            image.src = objectUrl
-        }
     )
 }
 
