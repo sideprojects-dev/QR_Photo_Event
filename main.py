@@ -3,52 +3,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Header
 from fastapi.responses import StreamingResponse
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
-from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaIoBaseDownload
 from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
-from dotenv import load_dotenv
 from datetime import datetime
-from supabase import create_client
-import io
 import io as io_module
 import os
 import uuid
-import json
 import tempfile
 import qrcode
 
+from config import FOLDER_ID, ADMIN_PASSWORD, SCOPES
+from deps import get_supabase
+from google_drive import get_drive_service, upload_file_to_drive
+
 
 app = FastAPI()
-
-load_dotenv()  # load environment variables from .env file
-
-CLIENT_SECRET_FILE = "client_secret.json"
-FOLDER_ID = os.getenv("FOLDER_ID")
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-TOKEN_FILE = "token.json"
-
-def get_drive_service():
-    creds = None
-
-    token_json = os.getenv("token.json")
-    print(f"token_json exists: {bool(token_json)}")
-
-    if token_json:
-        creds = Credentials.from_authorized_user_info(json.loads(token_json), SCOPES)
-        print(f"creds valid: {creds.valid}, expired: {creds.expired}")
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            print("Refreshing token...")
-            creds.refresh(Request())
-        else:
-            raise Exception("No valid credentials available. Please authenticate at /auth/login")
-        
-    service = build("drive", "v3", credentials=creds)
-    print(f"Drive service type: {type(service)}")
-    return service
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -125,33 +94,6 @@ def get_event_by_slug(supabase, slug: str):
         )
 
     return result.data[0]
-
-
-def upload_file_to_drive(drive, file, file_name: str, folder_id: str):
-    file_metadata = {
-        "name": file_name,
-        "parents": [folder_id]
-    }
-
-    media = MediaIoBaseUpload(
-        file.file,
-        mimetype=file.content_type,
-        chunksize=8 * 1024 * 1024,
-        resumable=True
-    )
-
-    request = drive.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id"
-    )
-
-    response = None
-
-    while response is None:
-        _, response = request.next_chunk()
-
-    return response["id"]
 
 
 def save_media_record(
@@ -379,18 +321,6 @@ async def upload(
         }
     }
 
-def get_supabase():
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    public_key = os.getenv("SUPABASE_KEY")
-
-    if not service_key:
-        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is missing from environment")
-
-    return create_client(
-        os.getenv("SUPABASE_URL"),
-        service_key
-    )
-
 @app.get("/event/master")
 def master_redirect():
     # QR-ul master este printat o singură dată și redirecționează
@@ -479,8 +409,6 @@ def event_page(slug: str):
     # Inject slug into page so JavaScript knows where to upload
     html = html.replace("</body>", f'<script>window.EVENT_SLUG = "{slug}";</script></body>')
     return HTMLResponse(html)
-    
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD","admin123")
 
 @app.post("/api/locations")
 async def create_location(
