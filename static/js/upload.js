@@ -35,17 +35,6 @@ export async function sendFile() {
         state.capturedFile
     )
 
-    if (
-        state.capturedFile.type?.startsWith('video/')
-    ) {
-        formData.append(
-            'front_camera',
-            state.capturedFromFrontCamera
-                ? 'true'
-                : 'false'
-        )
-    }
-
     try {
         const result =
             await uploadWithProgress(
@@ -298,8 +287,6 @@ function hideUploadProgress() {
 
 function resetCapturedMedia() {
     state.capturedFile = null
-    state.capturedFromFrontCamera = false
-    state.recordingWasFrontCamera = false
 
     const sendButton =
         document.getElementById(

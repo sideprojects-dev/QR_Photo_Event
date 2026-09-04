@@ -47,9 +47,18 @@ async function startRecording() {
         return
     }
 
+    // Pentru video frontal afișăm stream-ul exact cum este înregistrat.
+    // Astfel, imaginea văzută în timp ce filmezi, preview-ul rezultat,
+    // galeria și fișierul descărcat au aceeași orientare.
+    if (state.facingMode === 'user') {
+        document.getElementById(
+            'viewfinder'
+        )?.classList.remove(
+            'unmirror'
+        )
+    }
+
     state.recordedChunks = []
-    state.recordingWasFrontCamera =
-        state.facingMode === 'user'
 
     const mimeType =
         getSupportedVideoMimeType()
@@ -244,11 +253,6 @@ function buildRecordedVideo() {
             [blob],
             `video.${extension}`,
             { type: fileMimeType }
-        )
-
-    state.capturedFromFrontCamera =
-        Boolean(
-            state.recordingWasFrontCamera
         )
 
     const viewfinder =
