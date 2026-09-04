@@ -16,6 +16,9 @@ export async function sendFile() {
     const retakeButton =
         document.getElementById('btnRetake')
 
+    message.hidden = true
+    message.textContent = ''
+
     sendButton.disabled = true
     retakeButton.disabled = true
     document.body.classList.add('uploading')
@@ -69,6 +72,7 @@ export async function sendFile() {
             'Gata'
         )
 
+        message.hidden = false
         message.textContent =
             result.data?.mesaj ||
             'Fișier încărcat cu succes.'
@@ -78,6 +82,7 @@ export async function sendFile() {
         await loadGallery(true)
 
     } catch (err) {
+        message.hidden = false
         message.textContent =
             'Eroare: ' + err.message
 
@@ -102,9 +107,13 @@ export async function retakeCapture() {
 
     resetCapturedMedia()
 
-    document.getElementById(
-        'message'
-    ).textContent = ''
+    const message =
+        document.getElementById(
+            'message'
+        )
+
+    message.hidden = false
+    message.textContent = ''
 
     await startCamera()
 }

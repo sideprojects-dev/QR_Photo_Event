@@ -240,7 +240,7 @@ function createGalleryItem(item) {
     )
 
     downloadLink.title =
-        'Descarcă originalul'
+        'Descarcă'
 
     downloadLink.textContent = '↓'
 
