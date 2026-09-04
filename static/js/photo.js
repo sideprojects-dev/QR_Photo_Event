@@ -14,15 +14,35 @@ export async function takePhoto() {
     const shouldMirror =
         state.facingMode === 'user'
 
-    // Pentru camera frontală folosim întotdeauna cadrul din stream-ul
-    // care alimentează preview-ul. Unele versiuni iOS/Safari întorc
-    // ImageCapture/high-resolution deja oglindit, altele nu. Dacă am
-    // oglindi acel blob din nou, rezultatul ar diferi între dispozitive.
+    // Pentru camera frontală evităm ImageCapture, deoarece pe unele
+    // versiuni iOS rezultatul poate veni deja oglindit, iar pe altele nu.
     //
-    // Cadrul video brut este predictibil: preview-ul este oglindit prin CSS,
-    // iar aici îl oglindim exact o singură dată în canvas, astfel încât poza
-    // salvată să arate la fel ca preview-ul selfie.
+    // În schimb pornim temporar aceeași cameră la rezoluție cât mai mare,
+    // desenăm cadrul în canvas și îl oglindim exact o singură dată.
+    // Astfel păstrăm orientarea corectă și o calitate mult mai bună decât
+    // dacă am captura doar cadrul din preview-ul 1920x1080.
     if (shouldMirror) {
+        try {
+            const highResolutionFrontBlob =
+                await takeHighResolutionPhoto(
+                    true
+                )
+
+            if (highResolutionFrontBlob) {
+                setCapturedPhoto(
+                    highResolutionFrontBlob
+                )
+
+                stopCamera()
+                return
+            }
+        } catch (err) {
+            console.warn(
+                'Captura frontală high-resolution a eșuat. Folosim cadrul din preview:',
+                err
+            )
+        }
+
         try {
             const frontCameraBlob =
                 await takePhotoFromVideoFrame(
