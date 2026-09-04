@@ -1,14 +1,14 @@
-import { startCamera, flipCamera } from './camera.js?v=4'
-import { takePhoto } from './photo.js?v=4'
-import { toggleVideo } from './video.js?v=4'
-import { sendFile } from './upload.js?v=4'
+import { startCamera, flipCamera } from './camera.js?v=5'
+import { takePhoto } from './photo.js?v=5'
+import { toggleVideo } from './video.js?v=5'
+import { sendFile } from './upload.js?v=5'
 
 import {
     loadGallery,
     loadMoreGallery,
     closeGalleryModal,
     bindGalleryModalEvents
-} from './gallery.js?v=4'
+} from './gallery.js?v=5'
 
 function bindControls() {
     document.getElementById('btnFlip')?.addEventListener('click', flipCamera)

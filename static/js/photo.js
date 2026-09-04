@@ -1,4 +1,4 @@
-import { state } from './state.js?v=3'
+import { state } from './state.js?v=5'
 
 export async function takePhoto() {
     const currentVideoTrack = state.stream?.getVideoTracks()[0]
