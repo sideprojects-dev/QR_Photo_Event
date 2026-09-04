@@ -4,6 +4,11 @@ import {
     stopCamera
 } from './camera.js?v=7'
 
+let frontCanvas = null
+let frontCanvasStream = null
+let frontCanvasAnimationId = null
+let frontCanvasVideoTrack = null
+
 function getSupportedVideoMimeType() {
     const types = [
         'video/mp4;codecs=h264,aac',
@@ -33,8 +38,7 @@ export async function toggleVideo() {
 }
 
 async function startRecording() {
-    // Preview-ul foto nu mai ține microfonul pornit.
-    // Îl pornim doar când utilizatorul începe efectiv filmarea.
+    // Microfonul pornește numai când începe filmarea.
     await startCamera({
         withAudio: true
     })
@@ -64,9 +68,26 @@ async function startRecording() {
             mimeType
     }
 
+    let recordingStream =
+        state.stream
+
+    // Camera frontală:
+    // înregistrăm un canvas desenat din același preview live și îl
+    // oglindim exact o singură dată. Este aceeași regulă folosită de
+    // captura foto care a funcționat corect pe Android și iOS.
+    if (state.facingMode === 'user') {
+        const normalizedFrontStream =
+            createNormalizedFrontVideoStream()
+
+        if (normalizedFrontStream) {
+            recordingStream =
+                normalizedFrontStream
+        }
+    }
+
     state.mediaRecorder =
         new MediaRecorder(
-            state.stream,
+            recordingStream,
             recorderOptions
         )
 
@@ -87,6 +108,7 @@ async function startRecording() {
                 )
 
             state.isRecording = false
+            stopFrontCanvasRecording()
             stopCamera()
             resetRecordingButtons()
         }
@@ -131,6 +153,139 @@ async function startRecording() {
         'Se înregistrează...'
 }
 
+function createNormalizedFrontVideoStream() {
+    const viewfinder =
+        document.getElementById(
+            'viewfinder'
+        )
+
+    if (
+        !viewfinder ||
+        !viewfinder.videoWidth ||
+        !viewfinder.videoHeight ||
+        typeof HTMLCanvasElement ===
+            'undefined'
+    ) {
+        return null
+    }
+
+    frontCanvas =
+        document.createElement(
+            'canvas'
+        )
+
+    frontCanvas.width =
+        viewfinder.videoWidth
+
+    frontCanvas.height =
+        viewfinder.videoHeight
+
+    const ctx =
+        frontCanvas.getContext(
+            '2d',
+            {
+                alpha: false
+            }
+        )
+
+    if (
+        !ctx ||
+        typeof frontCanvas.captureStream !==
+            'function'
+    ) {
+        frontCanvas = null
+        return null
+    }
+
+    const drawFrame = () => {
+        if (!frontCanvas || !ctx) {
+            return
+        }
+
+        ctx.save()
+
+        // Oglindim exact o dată, identic cu fotografia frontală stabilă.
+        ctx.translate(
+            frontCanvas.width,
+            0
+        )
+
+        ctx.scale(-1, 1)
+
+        ctx.drawImage(
+            viewfinder,
+            0,
+            0,
+            frontCanvas.width,
+            frontCanvas.height
+        )
+
+        ctx.restore()
+
+        frontCanvasAnimationId =
+            requestAnimationFrame(
+                drawFrame
+            )
+    }
+
+    drawFrame()
+
+    frontCanvasStream =
+        frontCanvas.captureStream(30)
+
+    frontCanvasVideoTrack =
+        frontCanvasStream
+            .getVideoTracks()[0] ||
+        null
+
+    const combinedStream =
+        new MediaStream()
+
+    if (frontCanvasVideoTrack) {
+        combinedStream.addTrack(
+            frontCanvasVideoTrack
+        )
+    }
+
+    // Audio-ul rămâne direct din stream-ul original al camerei.
+    state.stream
+        .getAudioTracks()
+        .forEach(
+            track =>
+                combinedStream.addTrack(
+                    track
+                )
+        )
+
+    return combinedStream
+}
+
+function stopFrontCanvasRecording() {
+    if (
+        frontCanvasAnimationId !==
+        null
+    ) {
+        cancelAnimationFrame(
+            frontCanvasAnimationId
+        )
+
+        frontCanvasAnimationId =
+            null
+    }
+
+    if (frontCanvasStream) {
+        frontCanvasStream
+            .getVideoTracks()
+            .forEach(
+                track => track.stop()
+            )
+    }
+
+    frontCanvasVideoTrack = null
+    frontCanvasStream = null
+    frontCanvas = null
+}
+
 export function stopRecording() {
     if (
         !state.mediaRecorder ||
@@ -138,6 +293,7 @@ export function stopRecording() {
             'inactive'
     ) {
         state.isRecording = false
+        stopFrontCanvasRecording()
         stopCamera()
         resetRecordingButtons()
         return
@@ -150,6 +306,7 @@ export function stopRecording() {
 
 export function stopRecordingForBackground() {
     if (!state.isRecording) {
+        stopFrontCanvasRecording()
         stopCamera()
         return
     }
@@ -164,6 +321,7 @@ export function stopRecordingForBackground() {
         }
     } finally {
         state.isRecording = false
+        stopFrontCanvasRecording()
 
         // Oprim imediat hardware-ul când pagina ajunge în background.
         stopCamera()
@@ -207,6 +365,8 @@ function resetRecordingButtons() {
 }
 
 function buildRecordedVideo() {
+    stopFrontCanvasRecording()
+
     const recorderMimeType =
         state.mediaRecorder?.mimeType ||
         state.recordedChunks[0]?.type ||

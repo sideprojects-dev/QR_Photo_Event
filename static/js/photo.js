@@ -10,27 +10,30 @@ export async function takePhoto() {
         return
     }
 
-    // Reținem camera folosită chiar dacă stream-ul este oprit ulterior.
     const shouldMirror =
         state.facingMode === 'user'
 
-    // Pentru camera frontală evităm ImageCapture, deoarece pe unele
-    // versiuni iOS rezultatul poate veni deja oglindit, iar pe altele nu.
-    //
-    // În schimb pornim temporar aceeași cameră la rezoluție cât mai mare,
-    // desenăm cadrul în canvas și îl oglindim exact o singură dată.
-    // Astfel păstrăm orientarea corectă și o calitate mult mai bună decât
-    // dacă am captura doar cadrul din preview-ul 1920x1080.
+    // Camera frontală:
+    // folosim ImageCapture pentru calitate/exposure bune, apoi detectăm
+    // automat dacă iOS a returnat fotografia deja oglindită sau nu.
     if (shouldMirror) {
         try {
-            const highResolutionFrontBlob =
-                await takeHighResolutionPhoto(
-                    true
+            const imageCaptureBlob =
+                await takePhotoWithImageCapture(
+                    currentVideoTrack
                 )
 
-            if (highResolutionFrontBlob) {
+            if (imageCaptureBlob) {
+                const normalizedBlob =
+                    await normalizeFrontPhotoOrientation(
+                        imageCaptureBlob,
+                        document.getElementById(
+                            'viewfinder'
+                        )
+                    )
+
                 setCapturedPhoto(
-                    highResolutionFrontBlob
+                    normalizedBlob
                 )
 
                 stopCamera()
@@ -38,11 +41,12 @@ export async function takePhoto() {
             }
         } catch (err) {
             console.warn(
-                'Captura frontală high-resolution a eșuat. Folosim cadrul din preview:',
+                'ImageCapture frontal a eșuat. Folosim cadrul din preview:',
                 err
             )
         }
 
+        // Fallback stabil: cadrul live, deja expus corect.
         try {
             const frontCameraBlob =
                 await takePhotoFromVideoFrame(
@@ -66,7 +70,7 @@ export async function takePhoto() {
         return
     }
 
-    // Pentru camera din spate păstrăm captură high-resolution / ImageCapture.
+    // Camera din spate: păstrăm metoda high-resolution existentă.
     try {
         const imageCaptureBlob =
             await takePhotoWithImageCapture(
@@ -279,6 +283,372 @@ function drawVideoFrameToCanvas(
         0,
         canvas.width,
         canvas.height
+    )
+}
+
+async function mirrorImageBlob(blob) {
+    const image =
+        await loadImageFromBlob(blob)
+
+    const canvas =
+        document.createElement('canvas')
+
+    canvas.width =
+        image.naturalWidth ||
+        image.width
+
+    canvas.height =
+        image.naturalHeight ||
+        image.height
+
+    const ctx =
+        canvas.getContext('2d')
+
+    ctx.translate(
+        canvas.width,
+        0
+    )
+
+    ctx.scale(-1, 1)
+
+    ctx.drawImage(
+        image,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    const contentType =
+        blob.type &&
+        blob.type.startsWith('image/')
+            ? blob.type
+            : 'image/jpeg'
+
+    return canvasToBlob(
+        canvas,
+        contentType,
+        0.95
+    )
+}
+
+function loadImageFromBlob(blob) {
+    return new Promise(
+        (resolve, reject) => {
+            const image =
+                new Image()
+
+            const objectUrl =
+                URL.createObjectURL(blob)
+
+            image.onload = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                resolve(image)
+            }
+
+            image.onerror = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                reject(
+                    new Error(
+                        'Nu am putut procesa fotografia făcută cu camera frontală.'
+                    )
+                )
+            }
+
+            image.src = objectUrl
+        }
+    )
+}
+
+
+async function normalizeFrontPhotoOrientation(
+    blob,
+    video
+) {
+    const image =
+        await loadImageFromBlob(blob)
+
+    const sampleSize = 64
+
+    const previewCanvas =
+        document.createElement('canvas')
+
+    const normalPhotoCanvas =
+        document.createElement('canvas')
+
+    const mirroredPhotoCanvas =
+        document.createElement('canvas')
+
+    previewCanvas.width =
+        previewCanvas.height =
+        sampleSize
+
+    normalPhotoCanvas.width =
+        normalPhotoCanvas.height =
+        sampleSize
+
+    mirroredPhotoCanvas.width =
+        mirroredPhotoCanvas.height =
+        sampleSize
+
+    // Preview-ul frontal este oglindit pentru utilizator.
+    drawCoverSample(
+        video,
+        previewCanvas,
+        true
+    )
+
+    drawCoverSample(
+        image,
+        normalPhotoCanvas,
+        false
+    )
+
+    drawCoverSample(
+        image,
+        mirroredPhotoCanvas,
+        true
+    )
+
+    const previewData =
+        previewCanvas
+            .getContext('2d')
+            .getImageData(
+                0,
+                0,
+                sampleSize,
+                sampleSize
+            )
+            .data
+
+    const normalData =
+        normalPhotoCanvas
+            .getContext('2d')
+            .getImageData(
+                0,
+                0,
+                sampleSize,
+                sampleSize
+            )
+            .data
+
+    const mirroredData =
+        mirroredPhotoCanvas
+            .getContext('2d')
+            .getImageData(
+                0,
+                0,
+                sampleSize,
+                sampleSize
+            )
+            .data
+
+    const normalScore =
+        calculateImageDifference(
+            previewData,
+            normalData
+        )
+
+    const mirroredScore =
+        calculateImageDifference(
+            previewData,
+            mirroredData
+        )
+
+    // Dacă blob-ul deja seamănă mai mult cu preview-ul oglindit,
+    // îl păstrăm. Altfel îl oglindim o singură dată.
+    if (normalScore <= mirroredScore) {
+        return blob
+    }
+
+    return imageToMirroredBlob(
+        image,
+        blob.type || 'image/jpeg'
+    )
+}
+
+function drawCoverSample(
+    source,
+    canvas,
+    mirror
+) {
+    const ctx =
+        canvas.getContext('2d')
+
+    const sourceWidth =
+        source.videoWidth ||
+        source.naturalWidth ||
+        source.width
+
+    const sourceHeight =
+        source.videoHeight ||
+        source.naturalHeight ||
+        source.height
+
+    const sourceRatio =
+        sourceWidth / sourceHeight
+
+    const targetRatio =
+        canvas.width / canvas.height
+
+    let sx = 0
+    let sy = 0
+    let sw = sourceWidth
+    let sh = sourceHeight
+
+    if (sourceRatio > targetRatio) {
+        sw =
+            sourceHeight *
+            targetRatio
+
+        sx =
+            (sourceWidth - sw) / 2
+    } else {
+        sh =
+            sourceWidth /
+            targetRatio
+
+        sy =
+            (sourceHeight - sh) / 2
+    }
+
+    ctx.save()
+
+    if (mirror) {
+        ctx.translate(
+            canvas.width,
+            0
+        )
+
+        ctx.scale(-1, 1)
+    }
+
+    ctx.drawImage(
+        source,
+        sx,
+        sy,
+        sw,
+        sh,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    ctx.restore()
+}
+
+function calculateImageDifference(
+    first,
+    second
+) {
+    let difference = 0
+
+    // Ignorăm alpha.
+    for (
+        let i = 0;
+        i < first.length;
+        i += 4
+    ) {
+        difference +=
+            Math.abs(
+                first[i] -
+                second[i]
+            )
+
+        difference +=
+            Math.abs(
+                first[i + 1] -
+                second[i + 1]
+            )
+
+        difference +=
+            Math.abs(
+                first[i + 2] -
+                second[i + 2]
+            )
+    }
+
+    return difference
+}
+
+function imageToMirroredBlob(
+    image,
+    contentType
+) {
+    const canvas =
+        document.createElement('canvas')
+
+    canvas.width =
+        image.naturalWidth ||
+        image.width
+
+    canvas.height =
+        image.naturalHeight ||
+        image.height
+
+    const ctx =
+        canvas.getContext('2d')
+
+    ctx.translate(
+        canvas.width,
+        0
+    )
+
+    ctx.scale(-1, 1)
+
+    ctx.drawImage(
+        image,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    )
+
+    return canvasToBlob(
+        canvas,
+        contentType,
+        0.95
+    )
+}
+
+function loadImageFromBlob(blob) {
+    return new Promise(
+        (resolve, reject) => {
+            const image =
+                new Image()
+
+            const objectUrl =
+                URL.createObjectURL(blob)
+
+            image.onload = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                resolve(image)
+            }
+
+            image.onerror = () => {
+                URL.revokeObjectURL(
+                    objectUrl
+                )
+
+                reject(
+                    new Error(
+                        'Nu am putut procesa fotografia frontală.'
+                    )
+                )
+            }
+
+            image.src = objectUrl
+        }
     )
 }
 
