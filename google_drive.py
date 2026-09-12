@@ -17,7 +17,7 @@ _thread_local = threading.local()
 
 
 def _load_credentials_from_environment():
-    token_json = os.getenv("token.json")
+    token_json = os.getenv("GOOGLE_DRIVE_TOKEN_JSON")
 
     if not token_json:
         raise RuntimeError(

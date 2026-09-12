@@ -13,7 +13,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.get("/login")
 def auth_login():
     # Write client_secret to a temp file (Flow requires a file)
-    client_secret = os.getenv("client_secret.json")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET_JSON")
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(client_secret)
         temp_path = f.name
@@ -34,7 +34,14 @@ def auth_login():
 
 @router.get("/callback")
 def auth_callback(code: str, state: str = None):
-    client_secret = os.getenv("client_secret.json")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET_JSON")
+
+    if not client_secret:
+        raise RuntimeError(
+            "Google Drive client secret is missing. "
+            "Please set the GOOGLE_CLIENT_SECRET_JSON environment variable."
+        )
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(client_secret)
         temp_path = f.name
