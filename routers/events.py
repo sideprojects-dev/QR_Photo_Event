@@ -1,5 +1,6 @@
 import os
 import io as io_module
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -63,11 +64,18 @@ def event_page(slug: str):
             f'href="/static/css/{css_file}?v={css_version}"'
         )
 
+    event_slug_json = (
+        json.dumps(slug)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
+
     html = html.replace(
         "</body>",
         f'''
         <script>
-            window.EVENT_SLUG = "{slug}";
+            window.EVENT_SLUG = {event_slug_json};
         </script>
         </body>
         '''
@@ -85,6 +93,16 @@ async def api_create_event(event_name: str, location_slug: str):
         raise HTTPException(
             status_code=400,
             detail="Event name is required."
+        )
+
+    slug = event_name.lower()
+    slug = slug.replace(" & ", "-").replace(" ", "-")
+    slug = ''.join(c for c in slug if c.isalnum() or c == '-')
+
+    if not slug.strip('-') or slug == "master":
+        raise HTTPException(
+            status_code=400,
+            detail="Event name cannot form a usable URL."
         )
 
     supabase = get_supabase()
@@ -114,11 +132,6 @@ async def api_create_event(event_name: str, location_slug: str):
             status_code=500,
             detail="Locația nu are folder Google Drive asociat."
         )
-
-    # Generate event slug
-    slug = event_name.lower()
-    slug = slug.replace(" & ", "-").replace(" ", "-")
-    slug = ''.join(c for c in slug if c.isalnum() or c == '-')
 
     # Check duplicate event slug
     existing_event = (

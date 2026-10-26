@@ -1,9 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from config import validate_config
 from routers import auth, locations, events, media, pages
+from upload_limits import UploadBodyLimitMiddleware
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    validate_config()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(UploadBodyLimitMiddleware)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

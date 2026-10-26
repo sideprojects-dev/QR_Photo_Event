@@ -1,5 +1,6 @@
 import { state } from './state.js?v=5'
 import { stopCamera } from './camera.js?v=7'
+import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
 
 export async function takePhoto() {
     const currentVideoTrack = state.stream?.getVideoTracks()[0]
@@ -376,7 +377,7 @@ function showPhotoPreview(blob) {
         )
 
     preview.src =
-        URL.createObjectURL(blob)
+        replacePreviewObjectUrl(blob)
 
     preview.style.display =
         'block'

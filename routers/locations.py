@@ -84,6 +84,12 @@ async def create_location(location_name: str):
     slug = slug.replace(" & ", "-").replace(" ", "-")
     slug = ''.join(c for c in slug if c.isalnum() or c == '-')
 
+    if not slug.strip('-'):
+        raise HTTPException(
+            status_code=400,
+            detail="Location name cannot form a usable URL."
+        )
+
     supabase = get_supabase()
 
     existing_location = (

@@ -1,4 +1,6 @@
 import os
+from secrets import compare_digest
+
 from fastapi import HTTPException, Header
 from supabase import create_client
 
@@ -20,5 +22,9 @@ def get_supabase():
 def require_admin(x_admin_password: str = Header(None)):
     # Folosit ca dependency FastAPI (Depends(require_admin)) în locul
     # verificării manuale repetate în fiecare endpoint de admin.
-    if x_admin_password != ADMIN_PASSWORD:
+    if (
+        not ADMIN_PASSWORD
+        or not x_admin_password
+        or not compare_digest(x_admin_password, ADMIN_PASSWORD)
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")

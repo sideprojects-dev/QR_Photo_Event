@@ -3,6 +3,15 @@ import {
     startCamera,
     stopCamera
 } from './camera.js?v=7'
+import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
+import { createMirroredVideoStream } from './mirrored_video.js?v=1'
+
+let mirroredRecording = null
+
+function stopMirroredRecording() {
+    mirroredRecording?.stop()
+    mirroredRecording = null
+}
 
 function getSupportedVideoMimeType() {
     const types = [
@@ -47,17 +56,6 @@ async function startRecording() {
         return
     }
 
-    // Pentru video frontal afișăm stream-ul exact cum este înregistrat.
-    // Astfel, imaginea văzută în timp ce filmezi, preview-ul rezultat,
-    // galeria și fișierul descărcat au aceeași orientare.
-    if (state.facingMode === 'user') {
-        document.getElementById(
-            'viewfinder'
-        )?.classList.remove(
-            'unmirror'
-        )
-    }
-
     state.recordedChunks = []
 
     const mimeType =
@@ -75,11 +73,28 @@ async function startRecording() {
             mimeType
     }
 
-    state.mediaRecorder =
-        new MediaRecorder(
-            state.stream,
+    try {
+        let recordingStream = state.stream
+
+        if (state.facingMode === 'user') {
+            mirroredRecording = createMirroredVideoStream(
+                state.stream,
+                document.getElementById('viewfinder')
+            )
+            recordingStream = mirroredRecording.stream
+        }
+
+        state.mediaRecorder = new MediaRecorder(
+            recordingStream,
             recorderOptions
         )
+    } catch (err) {
+        stopMirroredRecording()
+        stopCamera()
+        document.getElementById('message').textContent =
+            err.message || 'Nu am putut porni înregistrarea video.'
+        return
+    }
 
     state.mediaRecorder.onerror =
         event => {
@@ -97,7 +112,14 @@ async function startRecording() {
                     'eroare necunoscută'
                 )
 
+            if (state.mediaRecorder) {
+                state.mediaRecorder.onstop = null
+                state.mediaRecorder.ondataavailable = null
+            }
+            state.mediaRecorder = null
+            state.recordedChunks = []
             state.isRecording = false
+            stopMirroredRecording()
             stopCamera()
             resetRecordingButtons()
         }
@@ -114,7 +136,17 @@ async function startRecording() {
     state.mediaRecorder.onstop =
         buildRecordedVideo
 
-    state.mediaRecorder.start(1000)
+    try {
+        state.mediaRecorder.start(1000)
+    } catch (err) {
+        state.mediaRecorder = null
+        state.recordedChunks = []
+        stopMirroredRecording()
+        stopCamera()
+        document.getElementById('message').textContent =
+            err.message || 'Nu am putut porni înregistrarea video.'
+        return
+    }
     state.isRecording = true
 
     const recordButton =
@@ -149,6 +181,7 @@ export function stopRecording() {
             'inactive'
     ) {
         state.isRecording = false
+        stopMirroredRecording()
         stopCamera()
         resetRecordingButtons()
         return
@@ -237,6 +270,10 @@ function buildRecordedVideo() {
             { type: fileMimeType }
         )
 
+    state.recordedChunks = []
+    state.mediaRecorder = null
+    stopMirroredRecording()
+
     if (blob.size === 0) {
         stopCamera()
 
@@ -276,7 +313,7 @@ function buildRecordedVideo() {
     preview.src = ''
 
     previewVideo.src =
-        URL.createObjectURL(blob)
+        replacePreviewObjectUrl(blob)
 
     previewVideo.style.display =
         'block'

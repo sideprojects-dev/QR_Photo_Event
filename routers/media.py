@@ -1,6 +1,7 @@
 import io as io_module
 import os
 import uuid
+import warnings
 from datetime import datetime
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
@@ -17,6 +18,7 @@ from google_drive import (
     upload_bytes_to_drive,
     upload_file_to_drive
 )
+from upload_limits import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
 
 router = APIRouter(tags=["media"])
 
@@ -28,6 +30,20 @@ PREVIEW_MAX_SIZE = (1600, 1600)
 
 THUMBNAIL_JPEG_QUALITY = 82
 PREVIEW_JPEG_QUALITY = 90
+VIDEO_HEADER_BYTES = 4096
+IMAGE_FORMAT_BY_MIME = {
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/webp": "WEBP",
+}
+VIDEO_MIME_TYPES = ("video/mp4", "video/webm")
+EXTENSION_BY_MIME = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
 
 
 def get_event_by_slug(supabase, slug: str):
@@ -212,6 +228,35 @@ def create_image_preview(file_bytes: bytes) -> bytes:
         max_size=PREVIEW_MAX_SIZE,
         quality=PREVIEW_JPEG_QUALITY
     )
+
+
+def validate_image_content(file_bytes: bytes, content_type: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", Image.DecompressionBombWarning)
+        with Image.open(io_module.BytesIO(file_bytes)) as image:
+            if image.format != IMAGE_FORMAT_BY_MIME[content_type]:
+                raise ValueError("Image format does not match the declared MIME type")
+            image.load()
+
+
+def validate_video_header(header: bytes, content_type: str) -> None:
+    if content_type == "video/mp4":
+        valid = (
+            len(header) >= 16
+            and header[4:8] == b"ftyp"
+            and int.from_bytes(header[:4], "big") >= 16
+        )
+    else:
+        valid = (
+            header.startswith(b"\x1a\x45\xdf\xa3")
+            and b"\x42\x82\x84webm" in header
+        )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video container header."
+        )
 
 
 def download_drive_file_to_buffer(
@@ -545,15 +590,31 @@ async def upload(
             detail="Only image and video files are allowed."
         )
 
+    if (
+        file.content_type.startswith("image/")
+        and file.content_type not in IMAGE_FORMAT_BY_MIME
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPEG, PNG and WebP images are supported."
+        )
+
+    if (
+        file.content_type.startswith("video/")
+        and file.content_type not in VIDEO_MIME_TYPES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only MP4 and WebM videos are supported."
+        )
+
     supabase = get_supabase()
     event = get_event_by_slug(
         supabase,
         slug
     )
 
-    extension = os.path.splitext(
-        file.filename or ""
-    )[1]
+    extension = EXTENSION_BY_MIME[file.content_type]
 
     unique_name = (
         f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
@@ -578,7 +639,15 @@ async def upload(
     if file.content_type.startswith("image/"):
         try:
             await file.seek(0)
-            image_bytes = await file.read()
+            image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
+
+            if len(image_bytes) > MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Image exceeds the 25 MB limit."
+                )
+
+            validate_image_content(image_bytes, file.content_type)
 
             thumbnail_bytes = create_image_thumbnail(
                 image_bytes
@@ -587,18 +656,34 @@ async def upload(
             preview_bytes = create_image_preview(
                 image_bytes
             )
+        except HTTPException:
+            raise
         except Exception as exc:
-            print(
-                "Image derivative generation failed:",
-                repr(exc),
-                "content_type:",
-                file.content_type,
-                "filename:",
-                file.filename,
-                flush=True
-            )
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid image file."
+            ) from exc
         finally:
             await file.seek(0)
+
+    if file.content_type.startswith("video/"):
+        if file_size is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not determine video size."
+            )
+        if file_size > MAX_VIDEO_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Video exceeds the 250 MB limit."
+            )
+
+        await file.seek(0)
+        try:
+            header = await file.read(VIDEO_HEADER_BYTES)
+        finally:
+            await file.seek(0)
+        validate_video_header(header, file.content_type)
 
     drive = get_drive_service()
 

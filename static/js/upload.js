@@ -1,14 +1,24 @@
 import { state } from './state.js?v=5'
 import { startCamera } from './camera.js?v=7'
 import { loadGallery } from './gallery.js?v=6'
+import { clearPreviewObjectUrl } from './preview_urls.js?v=1'
 
 export async function sendFile() {
     if (!state.capturedFile) {
         return
     }
 
+    const eventSlug = window.EVENT_SLUG
+
     const message =
         document.getElementById('message')
+
+    if (!eventSlug) {
+        message.hidden = false
+        message.textContent =
+            'Evenimentul nu a fost identificat. Scanează din nou codul QR.'
+        return
+    }
 
     const sendButton =
         document.getElementById('btnSend')
@@ -39,8 +49,7 @@ export async function sendFile() {
         const result =
             await uploadWithProgress(
                 `/upload/${
-                    window.EVENT_SLUG ||
-                    'default'
+                    encodeURIComponent(eventSlug)
                 }`,
                 formData,
                 percent => {
@@ -287,6 +296,7 @@ function hideUploadProgress() {
 
 function resetCapturedMedia() {
     state.capturedFile = null
+    state.recordedChunks = []
 
     const sendButton =
         document.getElementById(
@@ -323,6 +333,7 @@ function resetCapturedMedia() {
     previewVideo.removeAttribute('src')
     previewVideo.load()
     previewVideo.style.display = 'none'
+    clearPreviewObjectUrl()
 
     viewfinder.style.display = 'block'
 
