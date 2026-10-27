@@ -392,6 +392,49 @@ test('batch upload continues after errors and retries only failed photos', async
     }
 })
 
+test('429 explains overload and keeps the photo for a manual retry', async () => {
+    const page = mockPage()
+    const originalWindow = globalThis.window
+    const originalXhr = globalThis.XMLHttpRequest
+    const originalFetch = globalThis.fetch
+    const file = selectedFile('photo.jpg', 'image/jpeg')
+    let requests = 0
+    globalThis.window = { EVENT_SLUG: 'event', EVENT_ACCESS: 'access-code' }
+    globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ items: [], pagination: { has_more: false } })
+    })
+    globalThis.XMLHttpRequest = class {
+        upload = {}
+        open() {}
+        send() {
+            requests++
+            queueMicrotask(() => {
+                this.status = requests === 1 ? 429 : 200
+                this.responseText = '{}'
+                this.onload()
+            })
+        }
+    }
+    try {
+        page.elements.galleryFileInput.files = [file]
+        handleGalleryFileChange({ currentTarget: page.elements.galleryFileInput })
+        await sendFile()
+        assert.equal(requests, 1)
+        assert.equal(state.selectedPhotos[0].file, file)
+        assert.equal(state.selectedPhotos[0].status, 'error')
+        assert.match(state.selectedPhotos[0].error, /multe încărcări/)
+        await sendFile()
+        assert.equal(requests, 2)
+        assert.equal(state.selectedPhotos[0].status, 'success')
+    } finally {
+        page.restore()
+        globalThis.window = originalWindow
+        globalThis.XMLHttpRequest = originalXhr
+        globalThis.fetch = originalFetch
+    }
+})
+
 test('camera request finishing after a file selection releases its stream', async () => {
     const page = mockPage()
     const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')

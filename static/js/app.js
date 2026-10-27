@@ -15,7 +15,7 @@ import {
 import {
     sendFile,
     retakeCapture
-} from './upload.js?v=13'
+} from './upload.js?v=14'
 
 import {
     openGalleryPicker,

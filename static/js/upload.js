@@ -199,6 +199,7 @@ async function sendSelectedPhotos(eventSlug, message) {
 }
 
 function uploadErrorMessage(result) {
+    if (result.status === 429) return 'Momentan sunt multe încărcări în desfășurare. Încearcă din nou peste câteva secunde.'
     if (result.status === 413) return 'Fișierul depășește limita permisă.'
     if (result.status === 404) return 'Evenimentul sau codul de acces nu mai este valid.'
     if (result.status === 400) return 'Serverul nu a acceptat formatul fișierului.'

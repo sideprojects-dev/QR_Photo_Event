@@ -35,6 +35,16 @@ Uploadul acceptă imagini JPEG, PNG și WebP de cel mult 25 MB și video MP4 sau
 WebM de cel mult 250 MB. Controlul actual al antetului video nu verifică dacă
 întregul fișier poate fi redat.
 Cererea completă de upload, inclusiv formularul, este limitată la 251 MB.
+Serverul admite implicit cel mult 3 uploaduri simultane. Bugetul de ritm
+pornește cu 30 de cereri și se reîncarcă apoi cu 120 de cereri pe minut.
+Pe Render, limitele pot fi
+configurate prin `UPLOAD_MAX_ACTIVE`, `UPLOADS_PER_MINUTE` și `UPLOAD_BURST`
+(numere întregi pozitive). Cererile care depășesc limita primesc HTTP 429 și
+`Retry-After`; invitații pot reîncerca manual, fără retransmitere automată.
+Limitele sunt globale pentru fiecare proces, fără identificare după IP sau
+codul QR, astfel încât invitații de pe aceeași rețea nu împart o cotă personală.
+Cu mai multe procese sau instanțe, fiecare aplică propriile limite; pentru o
+cotă comună ar fi necesar un coordonator extern.
 
 Codurile QR se descarcă din panoul Admin al serverului pe care va fi folosită
 aplicația. Codul permanent al locației duce la evenimentul ei activ. Linkul
