@@ -119,11 +119,30 @@ body.photo-selection-ready .media-frame {
 }
 
 #viewfinder {
+  inset: auto;
+  top: 50%;
+  left: 50%;
   display: block;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
   opacity: 0;
 }
 
 body.camera-ready #viewfinder {
+  opacity: 1;
+}
+
+#cameraCanvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.camera-canvas-ready #cameraCanvas {
   opacity: 1;
 }
 
@@ -137,7 +156,7 @@ body.capture-ready #viewfinder {
 }
 
 #viewfinder.unmirror {
-  transform: scaleX(-1);
+  transform: translate(-50%, -50%) scaleX(-1);
 }
 
 .camera-selector {

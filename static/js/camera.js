@@ -1,8 +1,33 @@
 import { state } from './state.js?v=6'
+import { isIOSCamera, startCanvasPreview } from './camera_canvas.js?v=1'
 
 let cameraGeneration = 0
 let pendingStream = null
 let pendingFrame = null
+let removeResizeListener = null
+let stopCanvasPreview = null
+
+export function coverVideoSize(frameWidth, frameHeight, videoWidth, videoHeight) {
+    if (Math.min(frameWidth, frameHeight, videoWidth, videoHeight) <= 0) return null
+    const scale = Math.max(frameWidth / videoWidth, frameHeight / videoHeight)
+    return {
+        width: videoWidth * scale / frameWidth * 100,
+        height: videoHeight * scale / frameHeight * 100
+    }
+}
+
+function fitViewfinder(video) {
+    const frame = document.querySelector('.media-frame')
+    const box = frame?.getBoundingClientRect()
+    const size = coverVideoSize(
+        box?.width || 0, box?.height || 0,
+        video.videoWidth, video.videoHeight
+    )
+    if (!size) return false
+    video.style.width = `${size.width}%`
+    video.style.height = `${size.height}%`
+    return true
+}
 
 function waitForFirstFrame(video) {
     let finish
@@ -197,10 +222,15 @@ export async function selectCamera(deviceId) {
 }
 
 export function stopCamera() {
+    const viewfinder = document.getElementById('viewfinder')
+    stopCanvasPreview?.()
+    stopCanvasPreview = null
+    removeResizeListener?.()
+    removeResizeListener = null
     cameraGeneration += 1
     pendingFrame?.cancel()
     pendingFrame = null
-    document.body.classList.remove('camera-ready')
+    document.body.classList.remove('camera-ready', 'camera-canvas-ready')
 
     if (pendingStream) {
         pendingStream.getTracks().forEach(track => track.stop())
@@ -215,11 +245,11 @@ export function stopCamera() {
         state.stream = null
     }
 
-    const viewfinder = document.getElementById('viewfinder')
-
     if (viewfinder) {
         viewfinder.pause?.()
         viewfinder.srcObject = null
+        viewfinder.style.width = ''
+        viewfinder.style.height = ''
     }
 }
 
@@ -268,6 +298,11 @@ export async function startCamera({ withAudio = false } = {}) {
 
         const viewfinder = document.getElementById('viewfinder')
         viewfinder.srcObject = stream
+        const onResize = () => {
+            if (generation === cameraGeneration) fitViewfinder(viewfinder)
+        }
+        viewfinder.addEventListener('resize', onResize)
+        removeResizeListener = () => viewfinder.removeEventListener('resize', onResize)
 
         // Selfie preview: intentionally mirrored, like a normal front-camera preview.
         viewfinder.classList.toggle(
@@ -286,12 +321,19 @@ export async function startCamera({ withAudio = false } = {}) {
         if (generation !== cameraGeneration) return
         pendingFrame = null
         if (!hasFrame) throw new Error('Camera nu a trimis un cadru video.')
+        const canvas = document.getElementById('cameraCanvas')
+        const useCanvas = isIOSCamera() && canvas
+        if (useCanvas) {
+            stopCanvasPreview = startCanvasPreview(viewfinder, canvas, facingMode === 'user')
+        } else if (!fitViewfinder(viewfinder)) {
+            throw new Error('Previzualizarea camerei nu are dimensiuni valide.')
+        }
 
         state.stream = stream
         pendingStream = null
         if (settings.deviceId) state.selectedCameraId = settings.deviceId
         if (settings.facingMode) state.facingMode = settings.facingMode
-        document.body.classList.add('camera-ready')
+        document.body.classList.add(useCanvas ? 'camera-canvas-ready' : 'camera-ready')
 
         try {
             const cameras = await getAvailableCameras()

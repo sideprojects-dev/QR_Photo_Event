@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/camera.css?v=2">
+  <link rel="stylesheet" href="/static/css/camera.css">
   <link rel="stylesheet" href="/static/css/gallery.css">
-  <script type="module" src="/static/js/app.js?v=2"></script>
+  <script type="module" src="/static/js/app.js"></script>
   <title>Album Eveniment</title>
 </head>
 <body>
@@ -19,6 +19,7 @@
 
     <div class="media-frame">
       <video id="viewfinder" autoplay playsinline muted></video>
+      <canvas id="cameraCanvas" aria-hidden="true"></canvas>
       <img id="preview" alt="Previzualizare fotografie">
       <video id="previewVideo" controls playsinline></video>
     </div>

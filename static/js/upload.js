@@ -1,5 +1,5 @@
 import { state } from './state.js?v=6'
-import { startCamera } from './camera.js?v=10'
+import { startCamera } from './camera.js?v=15'
 import { loadGallery } from './gallery.js?v=8'
 import { clearPreviewObjectUrl } from './preview_urls.js?v=2'
 import { withEventAccess } from './guest_access.js?v=1'

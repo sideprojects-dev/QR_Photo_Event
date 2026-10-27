@@ -2,7 +2,7 @@ import { state } from './state.js?v=6'
 import {
     startCamera,
     stopCamera
-} from './camera.js?v=10'
+} from './camera.js?v=15'
 import { replacePreviewObjectUrl } from './preview_urls.js?v=2'
 import { createMirroredVideoStream } from './mirrored_video.js?v=1'
 

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { state } from '../static/js/state.js?v=6'
-import { flipCamera, selectCamera, startCamera, stopCamera } from '../static/js/camera.js?v=10'
+import { coverVideoSize, flipCamera, selectCamera, startCamera, stopCamera } from '../static/js/camera.js?v=15'
 import { retakeCapture } from '../static/js/upload.js'
 import { takePhoto } from '../static/js/photo.js'
 
@@ -50,18 +50,24 @@ function stream(deviceId, facingMode) {
     }
 }
 
-function setup(getUserMedia, useFrameCallback = false) {
+function setup(getUserMedia, useFrameCallback = false, ios = false) {
     const oldDocument = globalThis.document
     const oldWindow = globalThis.window
     const oldNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
     const ids = [
-        'viewfinder', 'cameraSelector', 'message', 'preview', 'previewVideo',
+        'viewfinder', 'cameraCanvas', 'cameraSelector', 'message', 'preview', 'previewVideo',
         'galleryFileInput', 'btnSend', 'btnRetake', 'photoSelectionGrid',
         'photoSelection', 'uploadProgress', 'uploadProgressBar',
         'uploadProgressPercent', 'uploadProgressLabel', 'selectedPhotoModal',
         'selectedPhotoPreviewImage', 'galleryModal'
     ]
     const elements = Object.fromEntries(ids.map(id => [id, element()]))
+    elements.cameraCanvas.getBoundingClientRect = () => ({ width: 398, height: 531 })
+    elements.cameraCanvas.draws = []
+    elements.cameraCanvas.getContext = () => ({
+        setTransform() {},
+        drawImage: (...args) => elements.cameraCanvas.draws.push(args)
+    })
     const viewfinder = elements.viewfinder
     let attachedStream = null
     Object.defineProperty(viewfinder, 'srcObject', {
@@ -84,6 +90,9 @@ function setup(getUserMedia, useFrameCallback = false) {
         hidden: false,
         body: { classList: classes() },
         getElementById: id => elements[id],
+        querySelector: selector => selector === '.media-frame'
+            ? { getBoundingClientRect: () => ({ width: 398, height: 531 }) }
+            : null,
         createElement: tag => {
             if (tag !== 'canvas') return element()
             return {
@@ -92,10 +101,10 @@ function setup(getUserMedia, useFrameCallback = false) {
             }
         }
     }
-    globalThis.window = {}
+    globalThis.window = { devicePixelRatio: 1 }
     Object.defineProperty(globalThis, 'navigator', {
         configurable: true,
-        value: { mediaDevices: { getUserMedia, enumerateDevices: async () => [] } }
+        value: { userAgent: ios ? 'iPhone Safari' : 'Desktop', mediaDevices: { getUserMedia, enumerateDevices: async () => [] } }
     })
     state.stream = null
     state.capturedFile = null
@@ -107,10 +116,10 @@ function setup(getUserMedia, useFrameCallback = false) {
 
     return {
         elements,
-        ready() {
+        ready(width = 640, height = 480) {
             viewfinder.readyState = 2
-            viewfinder.videoWidth = 640
-            viewfinder.videoHeight = 480
+            viewfinder.videoWidth = width
+            viewfinder.videoHeight = height
             viewfinder.emit('loadeddata')
         },
         restore() {
@@ -131,6 +140,7 @@ test('camera container has fixed geometry and video stays hidden until first fra
     const css = readFileSync(new URL('../static/css/camera.css', import.meta.url), 'utf8')
     assert.match(css, /\.media-frame\s*\{[^}]*aspect-ratio:\s*3\s*\/\s*4/s)
     assert.match(css, /#viewfinder\s*\{[^}]*opacity:\s*0/s)
+    assert.match(css, /#viewfinder\s*\{[^}]*object-fit:\s*cover/s)
     const source = stream('main', 'environment')
     const page = setup(async () => source, true)
     try {
@@ -139,11 +149,62 @@ test('camera container has fixed geometry and video stays hidden until first fra
         assert.equal(page.elements.viewfinder.srcObject, source)
         assert.equal(document.body.classList.contains('camera-ready'), false)
         assert.equal(state.stream, null)
-        page.ready()
+        page.ready(1080, 1920)
         assert.equal(document.body.classList.contains('camera-ready'), false)
         page.elements.viewfinder.frameCallback()
         await starting
         assert.equal(document.body.classList.contains('camera-ready'), true)
+        assert.equal(state.stream, source)
+        assert.equal(page.elements.viewfinder.style.width, '100%')
+        assert.ok(parseFloat(page.elements.viewfinder.style.height) > 100)
+        page.elements.viewfinder.videoWidth = 1920
+        page.elements.viewfinder.videoHeight = 1080
+        page.elements.viewfinder.emit('resize')
+        assert.ok(parseFloat(page.elements.viewfinder.style.width) > 100)
+        assert.equal(page.elements.viewfinder.style.height, '100%')
+    } finally { page.restore() }
+})
+
+test('explicit video geometry covers portrait and landscape streams without distortion', () => {
+    const portrait = coverVideoSize(398, 531, 1080, 1920)
+    assert.equal(portrait.width, 100)
+    assert.ok(portrait.height > 133 && portrait.height < 134)
+    assert.ok(Math.abs((portrait.width * 398) / (portrait.height * 531) - 1080 / 1920) < 0.001)
+    const landscape = coverVideoSize(398, 531, 1920, 1080)
+    assert.equal(landscape.height, 100)
+    assert.ok(landscape.width > 237 && landscape.width < 238)
+    assert.ok(Math.abs((landscape.width * 398) / (landscape.height * 531) - 1920 / 1080) < 0.001)
+})
+
+test('iPhone camera presents a proportionally cropped canvas before it becomes visible', async () => {
+    const source = stream('front', 'user')
+    const page = setup(async () => source, true, true)
+    try {
+        const starting = startCamera()
+        await tick()
+        page.ready(1080, 1920)
+        page.elements.viewfinder.frameCallback()
+        await starting
+        assert.equal(document.body.classList.contains('camera-ready'), false)
+        assert.equal(document.body.classList.contains('camera-canvas-ready'), true)
+        assert.equal(page.elements.cameraCanvas.draws.length, 1)
+        assert.equal(page.elements.cameraCanvas.width, 398)
+        assert.equal(page.elements.cameraCanvas.height, 531)
+        stopCamera()
+        assert.equal(document.body.classList.contains('camera-canvas-ready'), false)
+        assert.equal(source.track.stopped, true)
+    } finally { page.restore() }
+})
+
+test('recording camera restart receives audio and keeps cover geometry', async () => {
+    const source = stream('main', 'environment')
+    let requested
+    const page = setup(async constraints => { requested = constraints; return source })
+    try {
+        const starting = startCamera({ withAudio: true })
+        await tick(); page.ready(1080, 1920); await starting
+        assert.equal(requested.audio, true)
+        assert.ok(parseFloat(page.elements.viewfinder.style.height) > 100)
         assert.equal(state.stream, source)
     } finally { page.restore() }
 })
