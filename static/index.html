@@ -2,33 +2,116 @@
 <html lang="ro">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/script.js"></script>
-  <title>Album Nuntă</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/camera.css">
+  <link rel="stylesheet" href="/static/css/gallery.css">
+  <script type="module" src="/static/js/app.js"></script>
+  <title>Album Eveniment</title>
 </head>
 <body>
-  <h1>Album Nuntă</h1>
+  <div class="page">
 
-  <!-- Live camera feed -->
-  <video id="viewfinder" autoplay playsinline muted></video>
+    <header class="page-header">
+      <h1>Album Eveniment</h1>
+      <p class="subtitle">Adaugă o amintire de la eveniment</p>
+    </header>
 
-  <br>
+    <div class="media-frame">
+      <video id="viewfinder" autoplay playsinline muted></video>
+      <img id="preview" alt="Previzualizare fotografie">
+      <video id="previewVideo" controls playsinline></video>
+    </div>
 
-  <!-- Camera controls -->
-  <button class="btn" id="btnFlip"    onclick="flipCamera()">🔄 Întoarce camera</button>
-  <button class="btn" id="btnCapture" onclick="takePhoto()">📸</button>
-  <button class="btn" id="btnRecord"  onclick="toggleVideo()">⏺ Înregistrează</button>
+    <div id="cameraSelector" class="camera-selector" hidden></div>
 
-  <!-- Preview after capture -->
-  <img id="preview" alt="previzualizare">
-  <video id="previewVideo" controls style="display:none; width:100%; max-width:500px; border-radius:12px; margin-top:10px;"></video>
+    <div class="controls">
+      <div id="cameraControls" class="camera-controls">
+        <button class="btn btn-outline" id="btnFlip" type="button">
+          Schimbă camera
+        </button>
 
-  <!-- Send button appears after capture -->
-  <br>
-  <button class="btn" id="btnSend" onclick="sendFile()">☁️ Trimite</button>
+        <div class="capture-row">
+          <button class="btn btn-primary" id="btnCapture" type="button">
+            Fotografie
+          </button>
+          <button class="btn btn-accent" id="btnRecord" type="button">
+            Video
+          </button>
+        </div>
+        <button class="btn btn-outline gallery-upload-button" id="btnUploadFromGallery" type="button">
+          Încarcă din galerie
+        </button>
+        <input
+          id="galleryFileInput"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.webm"
+          hidden
+        >
+      </div>
 
-  <p id="message"></p>
+      <div id="capturedActions" class="captured-actions">
+        <button class="btn btn-outline" id="btnRetake" type="button">
+          Refă
+        </button>
+        <button class="btn btn-send" id="btnSend" type="button">
+          Trimite
+        </button>
+      </div>
+    </div>
 
+    <div id="uploadProgress" class="upload-progress" hidden aria-live="polite">
+      <div class="upload-progress-row">
+        <span id="uploadProgressLabel">Se încarcă...</span>
+        <strong id="uploadProgressPercent">0%</strong>
+      </div>
+      <div class="upload-progress-track" aria-hidden="true">
+        <div id="uploadProgressBar" class="upload-progress-bar"></div>
+      </div>
+    </div>
+
+    <p id="message"></p>
+
+    <section class="gallery-section" aria-labelledby="galleryTitle">
+      <div class="gallery-header">
+        <div>
+          <h2 id="galleryTitle">Galerie</h2>
+          <p class="gallery-subtitle">Amintirile încărcate la acest eveniment</p>
+        </div>
+      </div>
+
+      <div id="galleryGrid" class="gallery-grid"></div>
+
+      <p id="galleryEmpty" class="gallery-empty">
+        Nu există încă fotografii sau videoclipuri.
+      </p>
+      <p id="galleryMessage" class="gallery-message"></p>
+
+      <button class="btn btn-outline gallery-load-more" id="btnLoadMore" type="button">
+        Încarcă mai multe
+      </button>
+    </section>
+
+  </div>
+
+  <div id="galleryModal" class="gallery-modal" aria-hidden="true">
+    <button
+      class="gallery-modal-close"
+      id="btnCloseGallery"
+      type="button"
+      aria-label="Închide"
+    >×</button>
+
+    <div class="gallery-modal-content">
+      <div id="galleryModalLoading" class="gallery-modal-loading">
+        Se încarcă...
+      </div>
+      <img id="galleryModalImage" alt="Fotografie din galerie">
+      <video id="galleryModalVideo" controls playsinline></video>
+      <a id="galleryDownload" class="gallery-download" href="#">
+        Descarcă
+      </a>
+    </div>
+  </div>
 </body>
 </html>

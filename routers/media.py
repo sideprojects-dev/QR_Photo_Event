@@ -1,0 +1,815 @@
+import io as io_module
+import os
+import uuid
+import warnings
+from datetime import datetime
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi.responses import StreamingResponse, Response
+from googleapiclient.http import MediaIoBaseDownload
+from PIL import Image, ImageOps
+
+from deps import get_supabase
+from guest_access import has_event_access
+from google_drive import (
+    get_drive_service,
+    get_drive_file_size,
+    download_file_range,
+    get_or_create_child_folder,
+    upload_bytes_to_drive,
+    upload_file_to_drive
+)
+from upload_limits import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
+
+router = APIRouter(tags=["media"])
+
+THUMBNAIL_FOLDER_NAME = "_thumbnails"
+PREVIEW_FOLDER_NAME = "_previews"
+
+THUMBNAIL_MAX_SIZE = (600, 600)
+PREVIEW_MAX_SIZE = (1600, 1600)
+
+THUMBNAIL_JPEG_QUALITY = 82
+PREVIEW_JPEG_QUALITY = 90
+VIDEO_HEADER_BYTES = 4096
+IMAGE_FORMAT_BY_MIME = {
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/webp": "WEBP",
+}
+VIDEO_MIME_TYPES = ("video/mp4", "video/webm")
+EXTENSION_BY_MIME = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
+
+
+def get_event_by_slug(supabase, slug: str):
+    result = (
+        supabase
+        .table("events")
+        .select("id, folder_id")
+        .eq("slug", slug)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Eveniment negăsit."
+        )
+
+    return result.data[0]
+
+
+def save_media_record(
+    supabase,
+    event_id: int,
+    drive_file_id: str,
+    thumbnail_drive_file_id: str | None,
+    preview_drive_file_id: str | None,
+    file_name: str,
+    content_type: str,
+    size_bytes: int | None
+):
+    result = (
+        supabase
+        .table("media")
+        .insert({
+            "event_id": event_id,
+            "drive_file_id": drive_file_id,
+            "thumbnail_drive_file_id": thumbnail_drive_file_id,
+            "preview_drive_file_id": preview_drive_file_id,
+            "file_name": file_name,
+            "content_type": content_type,
+            "size_bytes": size_bytes
+        })
+        .execute()
+    )
+
+    return result.data[0] if result.data else None
+
+
+def get_event_media(
+    supabase,
+    event_id: int,
+    limit: int,
+    offset: int
+):
+    result = (
+        supabase
+        .table("media")
+        .select("id, content_type, created_at")
+        .eq("event_id", event_id)
+        .order("created_at", desc=True)
+        .range(offset, offset + limit)
+        .execute()
+    )
+
+    items = result.data or []
+    has_more = len(items) > limit
+
+    if has_more:
+        items = items[:limit]
+
+    return items, has_more
+
+
+def public_media_record(record):
+    return {
+        key: record[key]
+        for key in ("id", "content_type", "created_at")
+        if key in record
+    }
+
+
+@router.get("/api/events/{slug}/media")
+def get_event_media_endpoint(
+    slug: str,
+    response: Response,
+    limit: int = 30,
+    offset: int = 0,
+    access: str | None = None
+):
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Limit must be between 1 and 100."
+        )
+
+    if offset < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Offset cannot be negative."
+        )
+
+    supabase = get_supabase()
+    event = get_event_by_slug(supabase, slug)
+    if not has_event_access(event["id"], access):
+        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
+
+    items, has_more = get_event_media(
+        supabase=supabase,
+        event_id=event["id"],
+        limit=limit,
+        offset=offset
+    )
+
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+
+    return {
+        "items": [public_media_record(item) for item in items],
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None
+        }
+    }
+
+
+def get_media_by_id(supabase, media_id: str):
+    result = (
+        supabase
+        .table("media")
+        .select(
+            "id, event_id, drive_file_id, thumbnail_drive_file_id, "
+            "preview_drive_file_id, file_name, content_type, "
+            "size_bytes, created_at"
+        )
+        .eq("id", media_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Media not found."
+        )
+
+    return result.data[0]
+
+
+def get_accessible_media(supabase, media_id: str, access: str | None):
+    record = get_media_by_id(supabase, media_id)
+    if not has_event_access(record["event_id"], access):
+        raise HTTPException(status_code=404, detail="Media not found.")
+    return record
+
+
+def create_image_variant(
+    file_bytes: bytes,
+    max_size: tuple[int, int],
+    quality: int
+) -> bytes:
+    input_buffer = io_module.BytesIO(file_bytes)
+
+    with Image.open(input_buffer) as image:
+        image = ImageOps.exif_transpose(image)
+
+        image.thumbnail(
+            max_size,
+            Image.Resampling.LANCZOS
+        )
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+
+        output_buffer = io_module.BytesIO()
+
+        image.save(
+            output_buffer,
+            format="JPEG",
+            quality=quality,
+            optimize=True
+        )
+
+        return output_buffer.getvalue()
+
+
+def create_image_thumbnail(file_bytes: bytes) -> bytes:
+    return create_image_variant(
+        file_bytes=file_bytes,
+        max_size=THUMBNAIL_MAX_SIZE,
+        quality=THUMBNAIL_JPEG_QUALITY
+    )
+
+
+def create_image_preview(file_bytes: bytes) -> bytes:
+    return create_image_variant(
+        file_bytes=file_bytes,
+        max_size=PREVIEW_MAX_SIZE,
+        quality=PREVIEW_JPEG_QUALITY
+    )
+
+
+def validate_image_content(file_bytes: bytes, content_type: str) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", Image.DecompressionBombWarning)
+        with Image.open(io_module.BytesIO(file_bytes)) as image:
+            if image.format != IMAGE_FORMAT_BY_MIME[content_type]:
+                raise ValueError("Image format does not match the declared MIME type")
+            image.load()
+
+
+def validate_video_header(header: bytes, content_type: str) -> None:
+    if content_type == "video/mp4":
+        valid = (
+            len(header) >= 16
+            and header[4:8] == b"ftyp"
+            and int.from_bytes(header[:4], "big") >= 16
+        )
+    else:
+        valid = (
+            header.startswith(b"\x1a\x45\xdf\xa3")
+            and b"\x42\x82\x84webm" in header
+        )
+
+    if not valid:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video container header."
+        )
+
+
+def download_drive_file_to_buffer(
+    drive,
+    drive_file_id: str
+):
+    request = drive.files().get_media(
+        fileId=drive_file_id
+    )
+
+    buffer = io_module.BytesIO()
+
+    downloader = MediaIoBaseDownload(
+        buffer,
+        request
+    )
+
+    done = False
+
+    while not done:
+        _, done = downloader.next_chunk()
+
+    buffer.seek(0)
+    return buffer
+
+
+def stream_drive_file(
+    drive,
+    drive_file_id: str,
+    media_type: str,
+    content_disposition: str | None = None
+):
+    buffer = download_drive_file_to_buffer(
+        drive=drive,
+        drive_file_id=drive_file_id
+    )
+
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+    }
+
+    if content_disposition:
+        headers["Content-Disposition"] = content_disposition
+
+    return StreamingResponse(
+        buffer,
+        media_type=media_type,
+        headers=headers
+    )
+
+
+@router.get("/media/{media_id}/thumbnail")
+def stream_media_thumbnail(media_id: str, access: str | None = None):
+    supabase = get_supabase()
+    media_record = get_accessible_media(
+        supabase=supabase,
+        media_id=media_id,
+        access=access
+    )
+
+    if not media_record["content_type"].startswith("image/"):
+        raise HTTPException(
+            status_code=404,
+            detail="Thumbnail not available for this media."
+        )
+
+    thumbnail_drive_file_id = media_record.get(
+        "thumbnail_drive_file_id"
+    )
+
+    drive = get_drive_service()
+
+    if thumbnail_drive_file_id:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=thumbnail_drive_file_id,
+            media_type="image/jpeg"
+        )
+
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"]
+    )
+
+
+@router.get("/media/{media_id}/preview")
+def stream_media_preview(media_id: str, access: str | None = None):
+    supabase = get_supabase()
+    media_record = get_accessible_media(
+        supabase=supabase,
+        media_id=media_id,
+        access=access
+    )
+
+    if not media_record["content_type"].startswith("image/"):
+        raise HTTPException(
+            status_code=404,
+            detail="Preview not available for this media."
+        )
+
+    preview_drive_file_id = media_record.get(
+        "preview_drive_file_id"
+    )
+
+    drive = get_drive_service()
+
+    if preview_drive_file_id:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=preview_drive_file_id,
+            media_type="image/jpeg"
+        )
+
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"]
+    )
+
+
+@router.get("/media/{media_id}/download")
+def download_media(media_id: str, access: str | None = None):
+    supabase = get_supabase()
+    media_record = get_accessible_media(
+        supabase=supabase,
+        media_id=media_id,
+        access=access
+    )
+
+    drive = get_drive_service()
+
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"],
+        content_disposition=(
+            f'attachment; filename="{media_record["file_name"]}"'
+        )
+    )
+
+
+
+
+def parse_byte_range(
+    range_header: str,
+    file_size: int
+) -> tuple[int, int]:
+    if not range_header.startswith("bytes="):
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header."
+        )
+
+    range_value = range_header.removeprefix("bytes=").strip()
+
+    if "," in range_value:
+        raise HTTPException(
+            status_code=416,
+            detail="Multiple ranges are not supported."
+        )
+
+    start_text, separator, end_text = range_value.partition("-")
+
+    if not separator:
+        raise HTTPException(
+            status_code=416,
+            detail="Invalid Range header."
+        )
+
+    try:
+        if start_text:
+            start = int(start_text)
+
+            if start < 0 or start >= file_size:
+                raise ValueError
+
+            if end_text:
+                end = int(end_text)
+            else:
+                end = file_size - 1
+        else:
+            # Suffix range, e.g. bytes=-500
+            suffix_length = int(end_text)
+
+            if suffix_length <= 0:
+                raise ValueError
+
+            suffix_length = min(
+                suffix_length,
+                file_size
+            )
+
+            start = file_size - suffix_length
+            end = file_size - 1
+
+        end = min(
+            end,
+            file_size - 1
+        )
+
+        if end < start:
+            raise ValueError
+
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=416,
+            detail="Requested range is not satisfiable.",
+            headers={
+                "Content-Range":
+                    f"bytes */{file_size}"
+            }
+        )
+
+    return start, end
+
+
+def stream_video_with_range(
+    request: Request,
+    drive,
+    media_record
+):
+    file_size = media_record.get(
+        "size_bytes"
+    )
+
+    if not file_size:
+        file_size = get_drive_file_size(
+            drive=drive,
+            drive_file_id=media_record["drive_file_id"]
+        )
+
+    file_size = int(file_size)
+    range_header = request.headers.get("range")
+
+    common_headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition":
+            f'inline; filename="{media_record["file_name"]}"'
+    }
+
+    if not range_header:
+        return stream_drive_file(
+            drive=drive,
+            drive_file_id=media_record["drive_file_id"],
+            media_type=media_record["content_type"],
+            content_disposition=(
+                f'inline; filename="{media_record["file_name"]}"'
+            )
+        )
+
+    start, end = parse_byte_range(
+        range_header=range_header,
+        file_size=file_size
+    )
+
+    chunk = download_file_range(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        start=start,
+        end=end
+    )
+
+    headers = {
+        **common_headers,
+        "Content-Range":
+            f"bytes {start}-{end}/{file_size}",
+        "Content-Length":
+            str(len(chunk)),
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex, nofollow"
+    }
+
+    return Response(
+        content=chunk,
+        status_code=206,
+        media_type=media_record["content_type"],
+        headers=headers
+    )
+
+
+@router.get("/media/{media_id}")
+def stream_media(
+    media_id: str,
+    request: Request,
+    access: str | None = None
+):
+    supabase = get_supabase()
+    media_record = get_accessible_media(
+        supabase=supabase,
+        media_id=media_id,
+        access=access
+    )
+
+    drive = get_drive_service()
+
+    if media_record["content_type"].startswith("video/"):
+        return stream_video_with_range(
+            request=request,
+            drive=drive,
+            media_record=media_record
+        )
+
+    return stream_drive_file(
+        drive=drive,
+        drive_file_id=media_record["drive_file_id"],
+        media_type=media_record["content_type"],
+        content_disposition=(
+            f'inline; filename="{media_record["file_name"]}"'
+        )
+    )
+
+
+@router.post("/upload/{slug}")
+async def upload(
+    slug: str,
+    file: UploadFile = File(...),
+    access: str | None = None
+):
+    if (
+        not file.content_type
+        or not file.content_type.startswith(
+            ("image/", "video/")
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only image and video files are allowed."
+        )
+
+    if (
+        file.content_type.startswith("image/")
+        and file.content_type not in IMAGE_FORMAT_BY_MIME
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only JPEG, PNG and WebP images are supported."
+        )
+
+    if (
+        file.content_type.startswith("video/")
+        and file.content_type not in VIDEO_MIME_TYPES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only MP4 and WebM videos are supported."
+        )
+
+    supabase = get_supabase()
+    event = get_event_by_slug(
+        supabase,
+        slug
+    )
+    if not has_event_access(event["id"], access):
+        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
+
+    extension = EXTENSION_BY_MIME[file.content_type]
+
+    unique_name = (
+        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+        f"{uuid.uuid4().hex[:6]}{extension}"
+    )
+
+    await file.seek(0)
+
+    file_size = None
+
+    try:
+        current_position = file.file.tell()
+        file.file.seek(0, os.SEEK_END)
+        file_size = file.file.tell()
+        file.file.seek(current_position)
+    except Exception:
+        file_size = None
+
+    thumbnail_bytes = None
+    preview_bytes = None
+
+    if file.content_type.startswith("image/"):
+        try:
+            await file.seek(0)
+            image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
+
+            if len(image_bytes) > MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Image exceeds the 25 MB limit."
+                )
+
+            validate_image_content(image_bytes, file.content_type)
+
+            thumbnail_bytes = create_image_thumbnail(
+                image_bytes
+            )
+
+            preview_bytes = create_image_preview(
+                image_bytes
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid image file."
+            ) from exc
+        finally:
+            await file.seek(0)
+
+    if file.content_type.startswith("video/"):
+        if file_size is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not determine video size."
+            )
+        if file_size > MAX_VIDEO_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Video exceeds the 250 MB limit."
+            )
+
+        await file.seek(0)
+        try:
+            header = await file.read(VIDEO_HEADER_BYTES)
+        finally:
+            await file.seek(0)
+        validate_video_header(header, file.content_type)
+
+    drive = get_drive_service()
+
+    drive_file_id = None
+    thumbnail_drive_file_id = None
+    preview_drive_file_id = None
+
+    try:
+        drive_file_id = upload_file_to_drive(
+            drive=drive,
+            file=file,
+            file_name=unique_name,
+            folder_id=event["folder_id"]
+        )
+
+        if thumbnail_bytes:
+            try:
+                thumbnail_folder_id = (
+                    get_or_create_child_folder(
+                        drive=drive,
+                        parent_folder_id=event["folder_id"],
+                        folder_name=THUMBNAIL_FOLDER_NAME
+                    )
+                )
+
+                thumbnail_drive_file_id = (
+                    upload_bytes_to_drive(
+                        drive=drive,
+                        data=thumbnail_bytes,
+                        file_name=(
+                            "thumb_"
+                            f"{os.path.splitext(unique_name)[0]}.jpg"
+                        ),
+                        folder_id=thumbnail_folder_id,
+                        mimetype="image/jpeg"
+                    )
+                )
+            except Exception as exc:
+                print(
+                    "Thumbnail upload failed:",
+                    repr(exc),
+                    flush=True
+                )
+
+        if preview_bytes:
+            try:
+                preview_folder_id = (
+                    get_or_create_child_folder(
+                        drive=drive,
+                        parent_folder_id=event["folder_id"],
+                        folder_name=PREVIEW_FOLDER_NAME
+                    )
+                )
+
+                preview_drive_file_id = (
+                    upload_bytes_to_drive(
+                        drive=drive,
+                        data=preview_bytes,
+                        file_name=(
+                            "preview_"
+                            f"{os.path.splitext(unique_name)[0]}.jpg"
+                        ),
+                        folder_id=preview_folder_id,
+                        mimetype="image/jpeg"
+                    )
+                )
+            except Exception as exc:
+                print(
+                    "Preview upload failed:",
+                    repr(exc),
+                    flush=True
+                )
+
+        media_record = save_media_record(
+            supabase=supabase,
+            event_id=event["id"],
+            drive_file_id=drive_file_id,
+            thumbnail_drive_file_id=(
+                thumbnail_drive_file_id
+            ),
+            preview_drive_file_id=(
+                preview_drive_file_id
+            ),
+            file_name=unique_name,
+            content_type=file.content_type,
+            size_bytes=file_size
+        )
+
+    except Exception:
+        for created_file_id in (
+            preview_drive_file_id,
+            thumbnail_drive_file_id,
+            drive_file_id
+        ):
+            if not created_file_id:
+                continue
+
+            try:
+                drive.files().delete(
+                    fileId=created_file_id
+                ).execute()
+            except Exception:
+                pass
+
+        raise
+
+    return {
+        "success": True,
+        "media": public_media_record(media_record) if media_record else None
+    }
