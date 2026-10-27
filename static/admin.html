@@ -8,7 +8,7 @@
   <style>
     body {
       font-family: sans-serif;
-      max-width: 600px;
+      max-width: 1100px;
       margin: 40px auto;
       padding: 20px;
       background: #f5f5f5;
@@ -63,6 +63,37 @@
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       margin-bottom: 12px;
+    }
+
+    .stats-grid, .admin-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .stat-card { padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
+    .stat-card strong { display: block; font-size: 28px; color: #2d6a4f; }
+    .stat-card span { color: #555; font-size: 14px; }
+    .admin-media-tools, .admin-media-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .admin-media-tools select, .admin-media-actions button { width: auto; min-height: 44px; padding: 9px 12px; }
+    .admin-media-card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; min-width: 0; }
+    .admin-media-card.is-selected { outline: 3px solid #2d6a4f; }
+    .admin-media-thumb { display: grid; place-items: center; width: 100%; height: 140px; background: #eee; border: 0; border-radius: 6px; overflow: hidden; cursor: pointer; }
+    .admin-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .admin-media-thumb span { font-size: 42px; }
+    .admin-media-card p { margin: 6px 0; overflow-wrap: anywhere; font-size: 13px; }
+    .admin-media-card label { display: flex; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; }
+    .admin-media-card input { width: auto; margin: 0; }
+    .admin-media-card .small-btn { margin: 4px 4px 0 0; }
+    .admin-media-card a.small-btn { display: inline-block; background: #2d6a4f; color: white; border-radius: 4px; text-decoration: none; }
+    .admin-media-results { white-space: pre-line; }
+    .admin-media-modal { display: none; position: fixed; inset: 0; z-index: 100; padding: 20px; background: rgba(0,0,0,.88); align-items: center; justify-content: center; }
+    .admin-media-modal.is-open { display: flex; }
+    .admin-media-modal-content { position: relative; width: min(100%, 980px); max-height: 95vh; text-align: center; }
+    .admin-media-modal img, .admin-media-modal video { display: block; max-width: 100%; max-height: 78vh; margin: auto; }
+    [hidden] { display: none !important; }
+    .admin-media-modal button { width: auto; min-height: 44px; margin: 0 0 12px; }
+    @media (max-width: 600px) {
+      body { margin: 0 auto; padding: 12px; }
+      .card { padding: 16px; }
+      .stats-grid, .admin-media-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-media-tools select, .admin-media-actions button { flex: 1 1 100%; }
+      .admin-media-thumb { height: 120px; }
     }
 
     .event-url {
@@ -157,6 +188,12 @@
   <!-- Admin Panel -->
   <div id="adminSection">
 
+    <section class="card" aria-labelledby="statsTitle">
+      <h2 id="statsTitle">📊 Privire de ansamblu</h2>
+      <div id="statsGrid" class="stats-grid">Se încarcă statisticile...</div>
+      <p id="statsMessage" class="message" role="status"></p>
+    </section>
+
     <!-- Locations dashboard -->
     <div id="locationsDashboard">
       <div class="card">
@@ -239,6 +276,42 @@
         <h2>📋 Evenimente</h2>
         <div id="eventsList">Se încarcă...</div>
       </div>
+
+      <section id="adminMediaPanel" class="card" hidden aria-labelledby="adminMediaTitle">
+        <h2 id="adminMediaTitle">Materiale</h2>
+        <p id="adminMediaEventName"></p>
+        <div class="admin-media-tools">
+          <select id="adminMediaKind" aria-label="Tipul materialelor">
+            <option value="all">Toate materialele</option>
+            <option value="image">Fotografii</option>
+            <option value="video">Videoclipuri</option>
+          </select>
+          <select id="adminMediaSort" aria-label="Sortare după data încărcării">
+            <option value="newest">Cele mai noi</option>
+            <option value="oldest">Cele mai vechi</option>
+          </select>
+        </div>
+        <div class="admin-media-actions">
+          <button type="button" id="adminMediaSelectShown">Selectează afișate</button>
+          <button type="button" id="adminMediaClearSelection">Anulează selecția</button>
+          <button type="button" id="adminMediaDeleteSelected">Șterge selectate</button>
+          <button type="button" id="adminMediaClose">Închide galeria</button>
+        </div>
+        <p id="adminMediaSelectedCount">0 materiale selectate</p>
+        <p id="adminMediaMessage" role="status"></p>
+        <div id="adminMediaGrid" class="admin-media-grid"></div>
+        <button type="button" id="adminMediaMore" hidden>Încarcă mai multe</button>
+        <p id="adminMediaResults" class="admin-media-results" role="status"></p>
+      </section>
+    </div>
+  </div>
+
+  <div id="adminMediaModal" class="admin-media-modal" aria-hidden="true" role="dialog" aria-label="Previzualizare material">
+    <div class="admin-media-modal-content">
+      <button type="button" id="adminMediaModalClose">Închide previzualizarea</button>
+      <img id="adminMediaModalImage" alt="Fotografie mărită" hidden>
+      <video id="adminMediaModalVideo" controls playsinline preload="metadata" hidden></video>
+      <p id="adminMediaModalMessage" style="color:white;"></p>
     </div>
   </div>
 
@@ -300,9 +373,37 @@
 
         const data = await response.json()
         renderLocations(data.locations)
+        await loadStats()
       } catch (err) {
         loginError.textContent = 'Eroare: ' + err.message
         loginError.style.display = 'block'
+      }
+    }
+
+    async function loadStats() {
+      const grid = document.getElementById('statsGrid')
+      grid.textContent = 'Se încarcă statisticile...'
+      document.getElementById('statsMessage').style.display = 'none'
+      try {
+        const response = await fetch('/api/admin/stats', {
+          headers: { 'x-admin-password': adminPassword }
+        })
+        if (!response.ok) throw new Error('Statisticile nu au putut fi încărcate.')
+        const stats = await response.json()
+        const labels = [
+          ['locations', 'Locații'], ['active_events', 'Evenimente active'],
+          ['archived_events', 'Evenimente arhivate'], ['photos', 'Fotografii'],
+          ['videos', 'Videoclipuri']
+        ]
+        grid.innerHTML = labels.map(([key, label]) => `
+          <div class="stat-card"><strong>${Number(stats[key]).toLocaleString('ro-RO')}</strong><span>${label}</span></div>
+        `).join('')
+      } catch (err) {
+        grid.textContent = '—'
+        const message = document.getElementById('statsMessage')
+        message.textContent = err.message
+        message.className = 'message error'
+        message.style.display = 'block'
       }
     }
 
@@ -340,6 +441,7 @@
     }
 
     function openLocation(slug, name) {
+      window.adminMediaManager?.close()
       selectedLocationSlug = slug
       selectedLocationName = name
 
@@ -354,6 +456,7 @@
     }
 
     function backToLocations() {
+      if (window.adminMediaManager?.close() === false) return
       selectedLocationSlug = null
       selectedLocationName = null
 
@@ -527,6 +630,11 @@
           >
             ⬇️ Descarcă QR
           </button>
+          <button class="small-btn manage-media-btn"
+            data-slug="${escapeHtml(event.slug)}"
+            data-name="${escapeHtml(event.name)}"
+            data-guest-url="${escapeHtml(event.guest_url)}"
+          >Gestionează materialele</button>
 
           ${
             event.status !== 'active'
@@ -552,6 +660,15 @@
       container.querySelectorAll('.activate-event-btn').forEach(button => {
         button.addEventListener('click', () => {
           activateEvent(button.dataset.slug)
+        })
+      })
+
+      container.querySelectorAll('.manage-media-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          window.adminMediaManager?.open(
+            button.dataset.slug, button.dataset.name,
+            button.dataset.guestUrl, adminPassword
+          )
         })
       })
     }
@@ -652,6 +769,15 @@
         alert('Eroare: ' + err.message)
       }
     }
+  </script>
+  <script type="module">
+    import { createAdminMediaManager } from '/static/js/admin_media.js?v=1'
+    window.adminMediaManager = createAdminMediaManager({
+      document,
+      window,
+      fetcher: (...args) => fetch(...args),
+      refreshStats: () => window.loadStats()
+    })
   </script>
 </body>
 </html>
