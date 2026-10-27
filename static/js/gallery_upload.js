@@ -1,5 +1,5 @@
 import { state } from './state.js?v=6'
-import { startCamera, stopCamera } from './camera.js?v=9'
+import { startCamera, stopCamera } from './camera.js?v=15'
 import { showVideoPreview } from './video.js?v=14'
 import {
     createSelectionPreviewUrl,

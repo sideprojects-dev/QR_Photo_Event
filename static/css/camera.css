@@ -1,9 +1,10 @@
 .media-frame {
   position: relative;
   width: 100%;
+  aspect-ratio: 3 / 4;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  background: #000;
+  background: #202422;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
@@ -110,14 +111,39 @@ body.photo-selection-ready .media-frame {
 #viewfinder,
 #preview,
 #previewVideo {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   object-fit: cover;
-  background: #000;
 }
 
 #viewfinder {
+  inset: auto;
+  top: 50%;
+  left: 50%;
   display: block;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+body.camera-ready #viewfinder {
+  opacity: 1;
+}
+
+#cameraCanvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.camera-canvas-ready #cameraCanvas {
+  opacity: 1;
 }
 
 #preview,
@@ -130,7 +156,7 @@ body.capture-ready #viewfinder {
 }
 
 #viewfinder.unmirror {
-  transform: scaleX(-1);
+  transform: translate(-50%, -50%) scaleX(-1);
 }
 
 .camera-selector {
