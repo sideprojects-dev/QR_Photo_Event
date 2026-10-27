@@ -1,4 +1,4 @@
-import { state } from './state.js?v=5'
+import { state } from './state.js?v=6'
 
 export async function getAvailableCameras() {
     const devices = await navigator.mediaDevices.enumerateDevices()
@@ -190,7 +190,7 @@ export async function startCamera({ withAudio = false } = {}) {
 
         // Selectorul de fișiere poate readuce pagina în prim-plan în timp
         // ce cererea pentru cameră este încă în curs.
-        if (state.capturedFile || document.hidden) {
+        if (state.capturedFile || state.selectedPhotos.length || document.hidden) {
             stream.getTracks().forEach(track => track.stop())
             return
         }

@@ -23,6 +23,11 @@
       <video id="previewVideo" controls playsinline></video>
     </div>
 
+    <section id="photoSelection" class="photo-selection" aria-label="Fotografii selectate" hidden>
+      <p id="photoSelectionCount" class="photo-selection-count"></p>
+      <div id="photoSelectionGrid" class="photo-selection-grid"></div>
+    </section>
+
     <div id="cameraSelector" class="camera-selector" hidden></div>
 
     <div class="controls">
@@ -46,6 +51,7 @@
           id="galleryFileInput"
           type="file"
           accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,.jpg,.jpeg,.png,.webp,.mp4,.webm"
+          multiple
           hidden
         >
       </div>
@@ -108,9 +114,20 @@
       </div>
       <img id="galleryModalImage" alt="Fotografie din galerie">
       <video id="galleryModalVideo" controls playsinline></video>
+      <div class="gallery-modal-navigation" aria-label="Navigare fotografii">
+        <button id="galleryPrevious" type="button" aria-label="Fotografia anterioară">‹</button>
+        <button id="galleryNext" type="button" aria-label="Fotografia următoare">›</button>
+      </div>
       <a id="galleryDownload" class="gallery-download" href="#">
         Descarcă
       </a>
+    </div>
+  </div>
+
+  <div id="selectedPhotoModal" class="gallery-modal" aria-hidden="true">
+    <button id="closeSelectedPhotoPreview" class="gallery-modal-close" type="button" aria-label="Închide previzualizarea">×</button>
+    <div class="gallery-modal-content">
+      <img id="selectedPhotoPreviewImage" alt="Fotografia selectată mărită">
     </div>
   </div>
 </body>
