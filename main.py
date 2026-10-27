@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from config import validate_config
-from routers import locations, events, media, pages
+from routers import admin_media, locations, events, media, pages
 from upload_limits import UploadBodyLimitMiddleware
 
 
@@ -23,3 +23,4 @@ app.include_router(pages.router)
 app.include_router(locations.router)
 app.include_router(events.router)
 app.include_router(media.router)
+app.include_router(admin_media.router)
