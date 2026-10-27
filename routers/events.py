@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 import qrcode
 
-from deps import get_supabase, require_admin
+from deps import count_rows, get_supabase, require_admin
 from guest_access import absolute_guest_url, event_path, has_event_access
 from google_drive import get_drive_service
 
@@ -276,6 +276,27 @@ def get_events():
     supabase = get_supabase()
     result = supabase.table("events").select("*").execute()
     return {"events": result.data}
+
+
+@router.get("/api/admin/stats", dependencies=[Depends(require_admin)])
+def get_admin_stats(response: Response):
+    try:
+        supabase = get_supabase()
+        stats = {
+            "locations": count_rows(supabase, "locations"),
+            "active_events": count_rows(supabase, "events", (("status", "active"),)),
+            "archived_events": count_rows(supabase, "events", (("status", "archived"),)),
+            "photos": count_rows(supabase, "media", media_kind="image"),
+            "videos": count_rows(supabase, "media", media_kind="video"),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Statisticile nu au putut fi încărcate. Încearcă din nou."
+        ) from exc
+
+    response.headers["Cache-Control"] = "private, no-store"
+    return stats
 
 
 @router.get("/api/qr/{slug}", dependencies=[Depends(require_admin)])

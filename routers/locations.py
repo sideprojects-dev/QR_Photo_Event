@@ -6,7 +6,7 @@ from httpx import ConnectError
 import qrcode
 
 from config import FOLDER_ID
-from deps import get_supabase, require_admin
+from deps import count_rows, get_supabase, require_admin
 from guest_access import absolute_guest_url, event_path, has_location_access, master_path
 from google_drive import get_drive_service
 
@@ -187,12 +187,28 @@ def get_location_events(location_slug: str, response: Response):
     )
 
     response.headers["Cache-Control"] = "private, no-store"
+    events = []
+    for event in events_result.data:
+        try:
+            photo_count = count_rows(
+                supabase, "media", (("event_id", event["id"]),), media_kind="image"
+            )
+            video_count = count_rows(
+                supabase, "media", (("event_id", event["id"]),), media_kind="video"
+            )
+        except Exception:
+            photo_count = video_count = None
+        events.append({
+            **event,
+            "guest_url": event_path(event["slug"], event["id"]),
+            "photo_count": photo_count,
+            "video_count": video_count,
+        })
+
     return {
         "location": location,
-        "events": [
-            {**event, "guest_url": event_path(event["slug"], event["id"])}
-            for event in events_result.data
-        ]
+        "master_url": master_path(location["slug"], location["id"]),
+        "events": events,
     }
 
 
