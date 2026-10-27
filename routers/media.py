@@ -591,7 +591,7 @@ def stream_media(
 
 
 @router.post("/upload/{slug}")
-async def upload(
+def upload(
     slug: str,
     file: UploadFile = File(...),
     access: str | None = None
@@ -640,7 +640,7 @@ async def upload(
         f"{uuid.uuid4().hex[:6]}{extension}"
     )
 
-    await file.seek(0)
+    file.file.seek(0)
 
     file_size = None
 
@@ -657,8 +657,8 @@ async def upload(
 
     if file.content_type.startswith("image/"):
         try:
-            await file.seek(0)
-            image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
+            file.file.seek(0)
+            image_bytes = file.file.read(MAX_IMAGE_BYTES + 1)
 
             if len(image_bytes) > MAX_IMAGE_BYTES:
                 raise HTTPException(
@@ -683,7 +683,7 @@ async def upload(
                 detail="Invalid image file."
             ) from exc
         finally:
-            await file.seek(0)
+            file.file.seek(0)
 
     if file.content_type.startswith("video/"):
         if file_size is None:
@@ -697,11 +697,11 @@ async def upload(
                 detail="Video exceeds the 250 MB limit."
             )
 
-        await file.seek(0)
+        file.file.seek(0)
         try:
-            header = await file.read(VIDEO_HEADER_BYTES)
+            header = file.file.read(VIDEO_HEADER_BYTES)
         finally:
-            await file.seek(0)
+            file.file.seek(0)
         validate_video_header(header, file.content_type)
 
     drive = get_drive_service()
