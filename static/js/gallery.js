@@ -1,5 +1,8 @@
-import { state } from './state.js?v=5'
+import { state } from './state.js?v=6'
 import { withEventAccess } from './guest_access.js?v=1'
+
+let loadedItems = []
+let currentModalItem = null
 
 export async function loadGallery(
     reset = false
@@ -47,6 +50,7 @@ export async function loadGallery(
         state.galleryOffset = 0
         state.galleryHasMore = false
         grid.innerHTML = ''
+        loadedItems = []
     }
 
     state.galleryLoading = true
@@ -134,6 +138,7 @@ function renderGalleryItems(items) {
         return
     }
 
+    loadedItems.push(...items)
     items.forEach(
         item => {
             grid.appendChild(
@@ -257,6 +262,7 @@ function createGalleryItem(item) {
 }
 
 export function openGalleryModal(item) {
+    currentModalItem = item
     const modal =
         document.getElementById(
             'galleryModal'
@@ -313,12 +319,14 @@ export function openGalleryModal(item) {
     }
 
     if (loading) {
+        loading.textContent = 'Se încarcă...'
         loading.style.display =
             'block'
     }
 
     image.style.display = 'none'
     video.style.display = 'none'
+    video.onloadedmetadata = null
 
     if (isVideo) {
         image.removeAttribute('src')
@@ -336,11 +344,7 @@ export function openGalleryModal(item) {
                 'block'
         }
 
-        video.addEventListener(
-            'loadedmetadata',
-            onVideoReady,
-            { once: true }
-        )
+        video.onloadedmetadata = onVideoReady
 
         video.load()
 
@@ -348,6 +352,7 @@ export function openGalleryModal(item) {
         video.pause()
         video.removeAttribute('src')
         video.load()
+        image.removeAttribute('src')
 
         image.onload = () => {
             if (loading) {
@@ -379,6 +384,35 @@ export function openGalleryModal(item) {
     document.body.classList.add(
         'modal-open'
     )
+    updateGalleryNavigation()
+}
+
+function loadedPhotos() {
+    return loadedItems.filter(item =>
+        !item.content_type?.startsWith('video/')
+    )
+}
+
+function updateGalleryNavigation() {
+    const previous = document.getElementById('galleryPrevious')
+    const next = document.getElementById('galleryNext')
+    const photos = loadedPhotos()
+    const index = photos.findIndex(item => item.id === currentModalItem?.id)
+    const visible = index >= 0 && photos.length > 1
+    previous.hidden = !visible
+    next.hidden = !visible
+    previous.disabled = index <= 0
+    next.disabled = index < 0 || index >= photos.length - 1
+}
+
+export function navigateGalleryPhoto(direction) {
+    if (!document.getElementById('galleryModal').classList.contains('is-open')) {
+        return
+    }
+    const photos = loadedPhotos()
+    const index = photos.findIndex(item => item.id === currentModalItem?.id)
+    const nextPhoto = photos[index + direction]
+    if (index >= 0 && nextPhoto) openGalleryModal(nextPhoto)
 }
 
 export function closeGalleryModal() {
@@ -411,6 +445,7 @@ export function closeGalleryModal() {
     }
 
     video.pause()
+    video.onloadedmetadata = null
     video.removeAttribute('src')
     video.load()
 
@@ -438,6 +473,7 @@ export function closeGalleryModal() {
     document.body.classList.remove(
         'modal-open'
     )
+    currentModalItem = null
 }
 
 export async function loadMoreGallery() {
@@ -463,11 +499,40 @@ export function bindGalleryModalEvents() {
         }
     )
 
+    document.getElementById('galleryPrevious')?.addEventListener(
+        'click', () => navigateGalleryPhoto(-1)
+    )
+    document.getElementById('galleryNext')?.addEventListener(
+        'click', () => navigateGalleryPhoto(1)
+    )
+
+    let touchStart = null
+    modal?.addEventListener('touchstart', event => {
+        const touch = event.touches[0]
+        touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null
+    }, { passive: true })
+    modal?.addEventListener('touchend', event => {
+        if (!touchStart) return
+        const touch = event.changedTouches[0]
+        if (!touch) return
+        const dx = touch.clientX - touchStart.x
+        const dy = touch.clientY - touchStart.y
+        touchStart = null
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            navigateGalleryPhoto(dx < 0 ? 1 : -1)
+        }
+    }, { passive: true })
+
     document.addEventListener(
         'keydown',
         event => {
+            if (!modal?.classList.contains('is-open')) return
             if (event.key === 'Escape') {
                 closeGalleryModal()
+            } else if (event.key === 'ArrowLeft') {
+                navigateGalleryPhoto(-1)
+            } else if (event.key === 'ArrowRight') {
+                navigateGalleryPhoto(1)
             }
         }
     )

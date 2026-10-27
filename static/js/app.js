@@ -1,33 +1,34 @@
-import { state } from './state.js?v=5'
+import { state } from './state.js?v=6'
 import {
     startCamera,
     stopCamera,
     flipCamera
-} from './camera.js?v=8'
+} from './camera.js?v=9'
 
-import { takePhoto } from './photo.js?v=13'
+import { takePhoto } from './photo.js?v=14'
 
 import {
     toggleVideo,
     stopRecordingForBackground
-} from './video.js?v=13'
+} from './video.js?v=14'
 
 import {
     sendFile,
     retakeCapture
-} from './upload.js?v=12'
+} from './upload.js?v=13'
 
 import {
     openGalleryPicker,
-    handleGalleryFileChange
-} from './gallery_upload.js?v=1'
+    handleGalleryFileChange,
+    bindSelectedPhotoPreviewEvents
+} from './gallery_upload.js?v=2'
 
 import {
     loadGallery,
     loadMoreGallery,
     closeGalleryModal,
     bindGalleryModalEvents
-} from './gallery.js?v=7'
+} from './gallery.js?v=8'
 
 function bindControls() {
     document.getElementById(
@@ -111,6 +112,7 @@ function bindMediaLifecycle() {
             // Dacă avem deja o poză/video făcut, păstrăm preview-ul.
             if (
                 state.capturedFile ||
+                state.selectedPhotos.length ||
                 state.isRecording
             ) {
                 return
@@ -140,6 +142,7 @@ function bindMediaLifecycle() {
 async function init() {
     bindControls()
     bindGalleryModalEvents()
+    bindSelectedPhotoPreviewEvents()
     bindMediaLifecycle()
 
     await startCamera()

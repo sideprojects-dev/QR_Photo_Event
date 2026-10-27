@@ -7,6 +7,106 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
+body.photo-selection-ready .media-frame {
+  display: none;
+}
+
+.photo-selection {
+  width: 100%;
+}
+
+.photo-selection-count {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.photo-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.selected-photo {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+
+.selected-photo-open,
+.selected-photo-open img,
+.selected-photo-done {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #eae7e1;
+}
+
+.selected-photo-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+#selectedPhotoPreviewImage {
+  max-width: 100%;
+  max-height: 88dvh;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.selected-photo-done {
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  font-size: 36px;
+}
+
+.selected-photo-name,
+.selected-photo-status {
+  margin: 7px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.selected-photo-name {
+  font-weight: 600;
+}
+
+.selected-photo-status {
+  min-height: 30px;
+  color: var(--muted);
+}
+
+.selected-photo progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--primary);
+}
+
+.selected-photo-remove {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (min-width: 560px) {
+  .photo-selection-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 #viewfinder,
 #preview,
 #previewVideo {
@@ -92,6 +192,19 @@ body.capture-ready .camera-controls {
 
 .gallery-upload-button {
   width: 100%;
+}
+
+.capture-row .btn,
+.captured-actions .btn,
+.gallery-upload-button {
+  min-height: 52px;
+}
+
+@media (max-width: 350px) {
+  .capture-row,
+  .captured-actions {
+    flex-direction: column;
+  }
 }
 
 .captured-actions {

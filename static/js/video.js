@@ -1,9 +1,9 @@
-import { state } from './state.js?v=5'
+import { state } from './state.js?v=6'
 import {
     startCamera,
     stopCamera
-} from './camera.js?v=8'
-import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
+} from './camera.js?v=9'
+import { replacePreviewObjectUrl } from './preview_urls.js?v=2'
 import { createMirroredVideoStream } from './mirrored_video.js?v=1'
 
 let mirroredRecording = null
