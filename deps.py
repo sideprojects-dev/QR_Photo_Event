@@ -19,6 +19,19 @@ def get_supabase():
     )
 
 
+def count_rows(supabase, table: str, filters=(), media_kind: str | None = None) -> int:
+    """Ask PostgREST for an exact count without fetching matching rows."""
+    query = supabase.table(table).select("id", count="exact", head=True)
+    for column, value in filters:
+        query = query.eq(column, value)
+    if media_kind:
+        query = query.like("content_type", f"{media_kind}/%")
+    result = query.execute()
+    if result.count is None:
+        raise RuntimeError("Supabase did not return a row count")
+    return result.count
+
+
 def require_admin(x_admin_password: str = Header(None)):
     # Folosit ca dependency FastAPI (Depends(require_admin)) în locul
     # verificării manuale repetate în fiecare endpoint de admin.

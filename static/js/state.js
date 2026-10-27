@@ -4,6 +4,7 @@ export const state = {
     mediaRecorder: null,
     recordedChunks: [],
     capturedFile: null,
+    selectedPhotos: [],
     isRecording: false,
     selectedCameraId: null,
     availableCameras: [],

@@ -161,10 +161,34 @@
 #galleryModalVideo {
   display: none;
   max-width: 100%;
-  max-height: calc(88dvh - 64px);
+  max-height: calc(88dvh - 130px);
   object-fit: contain;
   border-radius: 10px;
   background: #000;
+}
+
+.gallery-modal-navigation {
+  display: flex;
+  justify-content: space-between;
+  width: min(100%, 300px);
+  gap: 18px;
+}
+
+.gallery-modal-navigation button {
+  min-width: 54px;
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.gallery-modal-navigation button:disabled {
+  opacity: 0.35;
 }
 
 .gallery-modal-loading {
@@ -192,7 +216,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 48px;
   padding: 10px 16px;
   border-radius: 12px;
   background: #fff;

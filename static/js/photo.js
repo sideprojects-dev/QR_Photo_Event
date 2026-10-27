@@ -1,6 +1,6 @@
-import { state } from './state.js?v=5'
-import { stopCamera } from './camera.js?v=8'
-import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
+import { state } from './state.js?v=6'
+import { stopCamera } from './camera.js?v=9'
+import { replacePreviewObjectUrl } from './preview_urls.js?v=2'
 
 export async function takePhoto() {
     const currentVideoTrack = state.stream?.getVideoTracks()[0]

@@ -1,12 +1,21 @@
-import { state } from './state.js?v=5'
-import { startCamera } from './camera.js?v=8'
-import { loadGallery } from './gallery.js?v=7'
-import { clearPreviewObjectUrl } from './preview_urls.js?v=1'
+import { state } from './state.js?v=6'
+import { startCamera } from './camera.js?v=9'
+import { loadGallery } from './gallery.js?v=8'
+import { clearPreviewObjectUrl } from './preview_urls.js?v=2'
 import { withEventAccess } from './guest_access.js?v=1'
+import {
+    clearSelectedPhotos,
+    markSelectedPhotoUploaded,
+    renderSelectedPhotos,
+    updateSelectedPhotoStatus
+} from './gallery_upload.js?v=2'
 
 export async function sendFile() {
+    const pendingPhotos = state.selectedPhotos.some(
+        photo => photo.file && photo.status !== 'success'
+    )
     if (
-        !state.capturedFile ||
+        (!state.capturedFile && !pendingPhotos) ||
         document.body.classList.contains('uploading')
     ) {
         return
@@ -21,6 +30,11 @@ export async function sendFile() {
         message.hidden = false
         message.textContent =
             'Evenimentul nu a fost identificat. Scanează din nou codul QR.'
+        return
+    }
+
+    if (pendingPhotos) {
+        await sendSelectedPhotos(eventSlug, message)
         return
     }
 
@@ -77,11 +91,7 @@ export async function sendFile() {
             )
 
         if (!result.ok) {
-            throw new Error(
-                result.data?.detail ||
-                result.data?.error ||
-                'Upload-ul a eșuat.'
-            )
+            throw new Error(uploadErrorMessage(result))
         }
 
         showUploadProgress(
@@ -116,6 +126,83 @@ export async function sendFile() {
         )
         galleryButton.disabled = false
     }
+}
+
+async function sendSelectedPhotos(eventSlug, message) {
+    const sendButton = document.getElementById('btnSend')
+    const retakeButton = document.getElementById('btnRetake')
+    const galleryButton = document.getElementById('btnUploadFromGallery')
+    const pending = state.selectedPhotos.filter(photo =>
+        photo.file && photo.status !== 'success'
+    )
+    let succeeded = 0
+    let failed = 0
+
+    sendButton.disabled = true
+    retakeButton.disabled = true
+    galleryButton.disabled = true
+    document.body.classList.add('uploading')
+    renderSelectedPhotos()
+    message.hidden = false
+    message.textContent = `Se încarcă ${pending.length} fotografii...`
+
+    try {
+        for (const [index, photo] of pending.entries()) {
+            photo.status = 'uploading'
+            photo.progress = 0
+            photo.error = ''
+            updateSelectedPhotoStatus(photo)
+            showUploadProgress(0, `Fotografia ${index + 1}/${pending.length}: se transmite...`)
+
+            try {
+                const formData = new FormData()
+                formData.append('file', photo.file)
+                const result = await uploadWithProgress(
+                    withEventAccess(`/upload/${encodeURIComponent(eventSlug)}`),
+                    formData,
+                    percent => {
+                        photo.progress = percent
+                        photo.status = percent >= 100 ? 'processing' : 'uploading'
+                        updateSelectedPhotoStatus(photo)
+                        showUploadProgress(
+                            percent,
+                            percent >= 100
+                                ? `Fotografia ${index + 1}/${pending.length}: trimisă, se procesează...`
+                                : `Fotografia ${index + 1}/${pending.length}: se transmite...`
+                        )
+                    }
+                )
+                if (!result.ok) throw new Error(uploadErrorMessage(result))
+                markSelectedPhotoUploaded(photo)
+                succeeded++
+            } catch (err) {
+                photo.status = 'error'
+                photo.error = err.message || 'Încărcarea a eșuat.'
+                updateSelectedPhotoStatus(photo)
+                failed++
+            }
+        }
+
+        message.textContent = failed
+            ? `${succeeded} fotografii încărcate, ${failed} eșuate. Poți reîncerca doar fotografiile eșuate.`
+            : `${succeeded} fotografii încărcate cu succes.`
+        showUploadProgress(100, failed ? 'Finalizat cu erori' : 'Gata')
+        if (succeeded) await loadGallery(true)
+    } finally {
+        document.body.classList.remove('uploading')
+        galleryButton.disabled = false
+        retakeButton.disabled = false
+        sendButton.disabled = !state.selectedPhotos.some(photo => photo.file)
+        sendButton.textContent = failed ? 'Reîncearcă eșuate' : 'Trimite'
+        renderSelectedPhotos()
+    }
+}
+
+function uploadErrorMessage(result) {
+    if (result.status === 413) return 'Fișierul depășește limita permisă.'
+    if (result.status === 404) return 'Evenimentul sau codul de acces nu mai este valid.'
+    if (result.status === 400) return 'Serverul nu a acceptat formatul fișierului.'
+    return 'Încărcarea a eșuat pe server. Încearcă din nou.'
 }
 
 export async function retakeCapture() {
@@ -306,6 +393,7 @@ function hideUploadProgress() {
 function resetCapturedMedia() {
     state.capturedFile = null
     state.recordedChunks = []
+    clearSelectedPhotos()
 
     document.getElementById(
         'galleryFileInput'

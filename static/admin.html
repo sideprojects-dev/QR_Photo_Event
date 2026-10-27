@@ -6,23 +6,36 @@
   <title>Admin Panel</title>
 
   <style>
+    :root {
+      --primary: #2d6a4f;
+      --primary-dark: #1b4332;
+      --bg: #f6f4f0;
+      --text: #22201d;
+      --muted: #746f68;
+      --border: #e6e2db;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 20px 48px;
+      background: var(--bg);
+      color: var(--text);
     }
 
     h1,
     h2 {
-      color: #333;
+      color: var(--text);
     }
 
     .card {
-      background: white;
+      background: #fff;
       padding: 24px;
-      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       margin-bottom: 20px;
     }
@@ -31,25 +44,26 @@
       width: 100%;
       padding: 10px;
       margin: 8px 0;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       font-size: 16px;
       box-sizing: border-box;
     }
 
     button {
       width: 100%;
-      padding: 12px;
-      background: #2d6a4f;
+      min-height: 44px;
+      padding: 12px 16px;
+      background: var(--primary);
       color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 10px;
       font-size: 16px;
       cursor: pointer;
     }
 
     button:hover {
-      background: #1b4332;
+      background: var(--primary-dark);
     }
 
     button:disabled {
@@ -59,10 +73,53 @@
 
     .event-card {
       background: white;
-      padding: 16px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
       margin-bottom: 12px;
+    }
+
+    .event-card h3 { margin: 0 0 8px; font-size: 18px; }
+    .event-card p { margin: 7px 0; color: var(--muted); }
+    .event-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .event-actions button { width: auto; margin: 0; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    .stat-card {
+      padding: 18px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #fff;
+    }
+    .stat-card strong { display: block; font-size: 30px; color: var(--primary); }
+    .stat-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 14px; }
+
+    .list-tools { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 16px; }
+    .list-tools input, .list-tools select {
+      flex: 1 1 210px;
+      width: auto;
+      min-height: 44px;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 16px;
+    }
+    .list-tools select { flex-basis: 160px; }
+    .location-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .location-list .event-card { margin-bottom: 0; }
+
+    .status-active, .status-archived {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
     }
 
     .event-url {
@@ -73,17 +130,17 @@
 
     .status-active {
       color: #2d6a4f;
-      font-size: 12px;
+      background: #e3f2e9;
     }
 
     .status-archived {
-      color: #999;
-      font-size: 12px;
+      color: #625e57;
+      background: #eeebe6;
     }
 
     .small-btn {
       width: auto;
-      padding: 8px 16px;
+      padding: 10px 16px;
       margin-top: 8px;
       margin-right: 6px;
       font-size: 14px;
@@ -107,6 +164,8 @@
       border-radius: 4px;
     }
 
+    .message[role="status"] { margin-bottom: 12px; }
+
     .success {
       background: #d4edda;
       color: #155724;
@@ -127,6 +186,15 @@
 
     #locationDashboard {
       display: none;
+    }
+
+    #loginSection { max-width: 420px; margin: 8vh auto 0; }
+
+    @media (max-width: 600px) {
+      body { padding: 16px 12px 32px; }
+      .card { padding: 18px; }
+      .event-actions button { flex: 1 1 100%; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -157,6 +225,12 @@
   <!-- Admin Panel -->
   <div id="adminSection">
 
+    <section class="card" aria-labelledby="dashboardTitle">
+      <h2 id="dashboardTitle">📊 Privire de ansamblu</h2>
+      <div id="statsGrid" class="stats-grid">Se încarcă statisticile...</div>
+      <p id="statsMessage" class="message" role="status"></p>
+    </section>
+
     <!-- Locations dashboard -->
     <div id="locationsDashboard">
       <div class="card">
@@ -183,7 +257,10 @@
 
       <div class="card">
         <h2>📍 Locații</h2>
-        <div id="locationsList">Se încarcă...</div>
+        <div class="list-tools">
+          <input id="locationSearch" type="search" placeholder="Caută locație după nume" aria-label="Caută locație după nume">
+        </div>
+        <div id="locationsList" class="location-list">Se încarcă...</div>
       </div>
     </div>
 
@@ -210,7 +287,11 @@
           QR permanent al acestei locații. Se printează o singură dată și duce mereu la evenimentul activ curent.
         </p>
         <p>Eveniment activ: <strong id="masterQrActiveEvent">—</strong></p>
-        <button onclick="downloadMasterQR()">⬇️ Descarcă Master QR</button>
+        <div class="event-actions">
+          <button id="downloadMasterQrBtn" onclick="downloadMasterQR()">⬇️ Descarcă Master QR</button>
+          <button id="copyMasterLinkBtn" onclick="copyMasterLink()">Copiază linkul Master QR</button>
+        </div>
+        <p id="masterQrMessage" class="message" role="status"></p>
       </div>
 
       <div class="card">
@@ -237,6 +318,15 @@
 
       <div class="card">
         <h2>📋 Evenimente</h2>
+        <div class="list-tools">
+          <input id="eventSearch" type="search" placeholder="Caută eveniment după nume" aria-label="Caută eveniment după nume">
+          <select id="eventStatusFilter" aria-label="Filtrează evenimente după status">
+            <option value="all">Toate</option>
+            <option value="active">Active</option>
+            <option value="archived">Arhivate</option>
+          </select>
+        </div>
+        <p id="eventActionMessage" class="message" role="status"></p>
         <div id="eventsList">Se încarcă...</div>
       </div>
     </div>
@@ -246,6 +336,10 @@
     let adminPassword = ''
     let selectedLocationSlug = null
     let selectedLocationName = null
+    let selectedMasterUrl = null
+    let locationsCache = []
+    let eventsCache = []
+    let activationInProgress = false
 
     function escapeHtml(value) {
       return String(value)
@@ -272,6 +366,47 @@
         login()
       }
     })
+    document.getElementById('locationSearch').addEventListener('input', renderLocations)
+    document.getElementById('eventSearch').addEventListener('input', renderEvents)
+    document.getElementById('eventStatusFilter').addEventListener('change', renderEvents)
+
+    function showMessage(id, text, success = false) {
+      const message = document.getElementById(id)
+      message.className = `message ${success ? 'success' : 'error'}`
+      message.textContent = text
+      message.style.display = 'block'
+    }
+
+    function responseMessage(response, data, fallback) {
+      if (response.status >= 500) return fallback
+      return typeof data.detail === 'string' ? data.detail : fallback
+    }
+
+    async function loadStats() {
+      const grid = document.getElementById('statsGrid')
+      grid.textContent = 'Se încarcă statisticile...'
+      document.getElementById('statsMessage').style.display = 'none'
+      try {
+        const response = await fetch('/api/admin/stats', {
+          headers: { 'x-admin-password': adminPassword }
+        })
+        if (!response.ok) throw new Error('Statisticile nu au putut fi încărcate.')
+        const stats = await response.json()
+        const cards = [
+          ['Locații', stats.locations],
+          ['Evenimente active', stats.active_events],
+          ['Evenimente arhivate', stats.archived_events],
+          ['Fotografii', stats.photos],
+          ['Videoclipuri', stats.videos]
+        ]
+        grid.innerHTML = cards.map(([label, value]) => `
+          <div class="stat-card"><strong>${Number(value).toLocaleString('ro-RO')}</strong><span>${label}</span></div>
+        `).join('')
+      } catch (err) {
+        grid.textContent = '—'
+        showMessage('statsMessage', err.message)
+      }
+    }
 
     async function loadLocations() {
       const loginError = document.getElementById('loginError')
@@ -292,36 +427,38 @@
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}))
-          throw new Error(data.detail || 'Nu s-au putut încărca locațiile.')
+          throw new Error(responseMessage(response, data, 'Nu s-au putut încărca locațiile.'))
         }
 
         document.getElementById('loginSection').style.display = 'none'
         document.getElementById('adminSection').style.display = 'block'
 
         const data = await response.json()
-        renderLocations(data.locations)
+        locationsCache = data.locations
+        renderLocations()
+        await loadStats()
       } catch (err) {
         loginError.textContent = 'Eroare: ' + err.message
         loginError.style.display = 'block'
       }
     }
 
-    function renderLocations(locations) {
+    function renderLocations() {
       const container = document.getElementById('locationsList')
+      const search = document.getElementById('locationSearch').value.trim().toLocaleLowerCase('ro')
+      const locations = locationsCache.filter(location =>
+        location.name.toLocaleLowerCase('ro').includes(search)
+      )
 
       if (!locations.length) {
-        container.innerHTML = '<p style="color: #888;">Nu există locații încă.</p>'
+        container.innerHTML = `<p>${search ? 'Nicio locație nu corespunde căutării.' : 'Nu există locații încă.'}</p>`
         return
       }
 
       container.innerHTML = locations.map(location => `
         <div class="event-card">
-          <strong>${escapeHtml(location.name)}</strong>
-          <br>
-
-          <span class="event-url">${escapeHtml(location.slug)}</span>
-          <br>
-
+          <h3>${escapeHtml(location.name)}</h3>
+          <p class="event-url">${escapeHtml(location.slug)}</p>
           <button
             class="small-btn manage-location-btn"
             data-slug="${escapeHtml(location.slug)}"
@@ -342,6 +479,12 @@
     function openLocation(slug, name) {
       selectedLocationSlug = slug
       selectedLocationName = name
+      selectedMasterUrl = null
+      eventsCache = []
+      document.getElementById('eventSearch').value = ''
+      document.getElementById('eventStatusFilter').value = 'all'
+      document.getElementById('eventActionMessage').style.display = 'none'
+      document.getElementById('masterQrMessage').style.display = 'none'
 
       document.getElementById('locationsDashboard').style.display = 'none'
       document.getElementById('locationDashboard').style.display = 'block'
@@ -356,6 +499,7 @@
     function backToLocations() {
       selectedLocationSlug = null
       selectedLocationName = null
+      selectedMasterUrl = null
 
       document.getElementById('locationDashboard').style.display = 'none'
       document.getElementById('locationsDashboard').style.display = 'block'
@@ -390,7 +534,7 @@
         const data = await response.json()
 
         if (!response.ok) {
-          throw new Error(data.detail || 'Nu s-a putut crea locația.')
+          throw new Error(responseMessage(response, data, 'Nu s-a putut crea locația.'))
         }
 
         message.className = 'message success'
@@ -439,17 +583,19 @@
         const data = await response.json()
 
         if (!response.ok) {
-          throw new Error(data.detail || 'Nu s-au putut încărca evenimentele.')
+          throw new Error(responseMessage(response, data, 'Nu s-au putut încărca evenimentele.'))
         }
 
         selectedLocationName = data.location.name
         document.getElementById('selectedLocationName').textContent = data.location.name
         document.getElementById('selectedLocationSlug').textContent = data.location.slug
 
-        renderEvents(data.events)
+        eventsCache = data.events
+        selectedMasterUrl = data.master_url
+        renderEvents()
         updateMasterQrCard(data.events)
       } catch (err) {
-        container.innerHTML = `<p style="color: #721c24;">${escapeHtml(err.message)}</p>`
+        container.textContent = err.message
       }
     }
 
@@ -465,6 +611,9 @@
         return
       }
 
+      const button = document.getElementById('downloadMasterQrBtn')
+      button.disabled = true
+      document.getElementById('masterQrMessage').style.display = 'none'
       try {
         const response = await fetch(
           `/api/locations/${encodeURIComponent(selectedLocationSlug)}/master-qr`,
@@ -491,42 +640,85 @@
 
         URL.revokeObjectURL(url)
       } catch (err) {
-        alert('Eroare: ' + err.message)
+        showMessage('masterQrMessage', err.message)
+      } finally {
+        button.disabled = false
       }
     }
 
-    function renderEvents(events) {
+    async function copyLink(path, messageId, button) {
+      if (!path) {
+        showMessage(messageId, 'Linkul nu este disponibil încă. Încearcă din nou.')
+        return
+      }
+      button.disabled = true
+      try {
+        const url = new URL(path, window.location.origin).href
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url)
+        } else {
+          const input = document.createElement('textarea')
+          input.value = url
+          input.style.position = 'fixed'
+          input.style.opacity = '0'
+          document.body.appendChild(input)
+          input.select()
+          const copied = document.execCommand('copy')
+          input.remove()
+          if (!copied) throw new Error('Copierea nu este disponibilă în acest browser.')
+        }
+        showMessage(messageId, 'Linkul a fost copiat.', true)
+      } catch (err) {
+        showMessage(messageId, 'Linkul nu a putut fi copiat. Încearcă din nou.')
+      } finally {
+        button.disabled = false
+      }
+    }
+
+    function copyMasterLink() {
+      copyLink(selectedMasterUrl, 'masterQrMessage', document.getElementById('copyMasterLinkBtn'))
+    }
+
+    function renderEvents() {
       const container = document.getElementById('eventsList')
+      const search = document.getElementById('eventSearch').value.trim().toLocaleLowerCase('ro')
+      const status = document.getElementById('eventStatusFilter').value
+      const events = eventsCache.filter(event =>
+        event.name.toLocaleLowerCase('ro').includes(search) &&
+        (status === 'all' || event.status === status)
+      )
 
       if (!events.length) {
-        container.innerHTML = '<p style="color: #888;">Nu există evenimente încă.</p>'
+        container.textContent = eventsCache.length
+          ? 'Niciun eveniment nu corespunde filtrelor.'
+          : 'Nu există evenimente încă.'
         return
       }
 
       container.innerHTML = events.map(event => `
         <div class="event-card">
-          <strong>${escapeHtml(event.name)}</strong>
+          <h3>${escapeHtml(event.name)}</h3>
 
           ${
             event.status === 'active'
-              ? '<span class="status-active"> ● ACTIV</span>'
-              : '<span class="status-archived"> ○ arhivat</span>'
+              ? '<span class="status-active">● Activ</span>'
+              : '<span class="status-archived">○ Arhivat</span>'
           }
-
-          <br>
-
+          <p>Locație: ${escapeHtml(selectedLocationName)}</p>
+          <p>${event.photo_count == null || event.video_count == null
+            ? 'Numărul materialelor este indisponibil.'
+            : `Materiale: ${event.photo_count + event.video_count} · Fotografii: ${event.photo_count} · Videoclipuri: ${event.video_count}`}</p>
           <a class="event-url" href="${escapeHtml(event.guest_url)}" target="_blank" rel="noopener noreferrer">
-            ${window.location.origin}${escapeHtml(event.guest_url)}
+            ${escapeHtml(new URL(event.guest_url, window.location.origin).href)}
           </a>
-
-          <br>
-
+          <div class="event-actions">
           <button
             class="small-btn download-qr-btn"
             data-slug="${escapeHtml(event.slug)}"
           >
             ⬇️ Descarcă QR
           </button>
+          <button class="small-btn copy-event-link-btn" data-url="${escapeHtml(event.guest_url)}">Copiază linkul</button>
 
           ${
             event.status !== 'active'
@@ -540,12 +732,19 @@
               `
               : ''
           }
+          </div>
         </div>
       `).join('')
 
       container.querySelectorAll('.download-qr-btn').forEach(button => {
         button.addEventListener('click', () => {
-          downloadQR(button.dataset.slug)
+          downloadQR(button.dataset.slug, button)
+        })
+      })
+
+      container.querySelectorAll('.copy-event-link-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          copyLink(button.dataset.url, 'eventActionMessage', button)
         })
       })
 
@@ -585,7 +784,7 @@
         const data = await response.json()
 
         if (!response.ok) {
-          throw new Error(data.detail || data.error || 'Nu s-a putut crea evenimentul.')
+          throw new Error(responseMessage(response, data, 'Nu s-a putut crea evenimentul.'))
         }
 
         message.className = 'message success'
@@ -595,8 +794,7 @@
         document.getElementById('eventName').value = ''
 
         await loadLocationEvents()
-
-        //downloadQR(data.slug)
+        await loadStats()
       } catch (err) {
         message.className = 'message error'
         message.style.display = 'block'
@@ -607,7 +805,9 @@
       }
     }
 
-    async function downloadQR(slug) {
+    async function downloadQR(slug, button) {
+      button.disabled = true
+      document.getElementById('eventActionMessage').style.display = 'none'
       try {
         const response = await fetch(`/api/qr/${encodeURIComponent(slug)}`, {
           headers: { 'x-admin-password': adminPassword }
@@ -625,11 +825,19 @@
         link.remove()
         URL.revokeObjectURL(url)
       } catch (err) {
-        alert('Eroare: ' + err.message)
+        showMessage('eventActionMessage', err.message)
+      } finally {
+        button.disabled = false
       }
     }
 
     async function activateEvent(slug) {
+      if (activationInProgress) return
+      if (!window.confirm('Activezi acest eveniment? Master QR-ul locației va duce la noul eveniment activ.')) return
+      activationInProgress = true
+      const buttons = document.querySelectorAll('.activate-event-btn')
+      buttons.forEach(button => { button.disabled = true })
+      document.getElementById('eventActionMessage').style.display = 'none'
       try {
         const response = await fetch(
           `/api/events/${encodeURIComponent(slug)}/activate`,
@@ -648,8 +856,15 @@
         }
 
         await loadLocationEvents()
+        await loadStats()
+        showMessage('eventActionMessage', 'Evenimentul a fost activat. Master QR-ul duce acum la el.', true)
       } catch (err) {
-        alert('Eroare: ' + err.message)
+        showMessage('eventActionMessage', 'Evenimentul nu a putut fi activat. Încearcă din nou.')
+      } finally {
+        activationInProgress = false
+        document.querySelectorAll('.activate-event-btn').forEach(button => {
+          button.disabled = false
+        })
       }
     }
   </script>
