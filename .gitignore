@@ -136,6 +136,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -208,9 +210,15 @@ __marimo__/
 
 uploads/
 
+# Google OAuth credentials and temporary authorization files
 credentials.json
 client_secret.json
+client_secrets.json
+client_secret*.json
+google_credentials*.json
+google-credentials*.json
+*service_account*.json
+*service-account*.json
 code_verifier.txt
 token.json
 flow_state.pkl
-.env

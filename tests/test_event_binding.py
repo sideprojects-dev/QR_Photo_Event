@@ -10,6 +10,7 @@ from PIL import Image
 
 from main import app
 from routers import events, locations, media
+from guest_access import event_token, location_token
 
 
 TEST_ENV = {
@@ -18,36 +19,55 @@ TEST_ENV = {
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-key",
     "FOLDER_ID": "test-drive-folder",
     "GOOGLE_DRIVE_TOKEN_JSON": '{"token":"test-token"}',
+    "QR_ACCESS_SECRET": "test-secret-with-at-least-32-characters",
 }
 
 
 class EventBindingTests(unittest.TestCase):
     def test_open_page_keeps_original_event_after_qr_changes(self):
         qr_db = Mock()
-        qr_query = (
-            qr_db.table.return_value.select.return_value
-            .eq.return_value.order.return_value.limit.return_value
+        location_table = Mock()
+        event_table = Mock()
+        qr_db.table.side_effect = lambda name: (
+            location_table if name == "locations" else event_table
         )
-        qr_query.execute.side_effect = [
-            SimpleNamespace(data=[{"slug": "event-A"}]),
-            SimpleNamespace(data=[{"slug": "event-B"}]),
+        location_table.select.return_value.eq.return_value.limit.return_value.execute.return_value = (
+            SimpleNamespace(data=[{"id": 9}])
+        )
+        event_table.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.side_effect = [
+            SimpleNamespace(data=[{"id": 1, "slug": "event-A"}]),
+            SimpleNamespace(data=[{"id": 2, "slug": "event-B"}]),
         ]
 
-        with patch.object(locations, "get_supabase", return_value=qr_db):
-            first_scan = locations.master_redirect()
-            second_scan = locations.master_redirect()
+        with (
+            patch.dict(os.environ, TEST_ENV),
+            patch.object(locations, "get_supabase", return_value=qr_db),
+        ):
+            first_scan = locations.master_redirect_location("venue", location_token(9))
+            second_scan = locations.master_redirect_location("venue", location_token(9))
 
-        self.assertEqual(first_scan.headers["location"], "/event/event-A")
-        self.assertEqual(second_scan.headers["location"], "/event/event-B")
+        with patch.dict(os.environ, TEST_ENV):
+            self.assertEqual(first_scan.headers["location"], f"/event/event-A?access={event_token(1)}")
+            self.assertEqual(second_scan.headers["location"], f"/event/event-B?access={event_token(2)}")
 
         event_db = Mock()
-        event_query = event_db.table.return_value.select.return_value.eq.return_value
+        event_query = event_db.table.return_value.select.return_value.eq.return_value.limit.return_value
         event_query.execute.return_value = SimpleNamespace(data=[{"id": 1}])
 
-        with patch.object(events, "get_supabase", return_value=event_db):
-            page = events.event_page("event-A")
+        with (
+            patch.dict(os.environ, TEST_ENV),
+            patch.object(events, "get_supabase", return_value=event_db),
+        ):
+            page = events.event_page("event-A", event_token(1))
 
         self.assertIn('window.EVENT_SLUG = "event-A";', page.body.decode())
+        with (
+            patch.dict(os.environ, TEST_ENV),
+            patch.object(events, "get_supabase", return_value=event_db),
+        ):
+            self.assertIn(f'window.EVENT_ACCESS = "{event_token(1)}";', page.body.decode())
+            self.assertEqual(events.event_page("event-A").status_code, 404)
+            self.assertEqual(events.event_page("event-A", event_token(2)).status_code, 404)
 
         image = io.BytesIO()
         Image.new("RGB", (2, 2)).save(image, format="JPEG")
@@ -68,7 +88,7 @@ class EventBindingTests(unittest.TestCase):
             TestClient(app) as client,
         ):
             response = client.post(
-                "/upload/event-A",
+                f"/upload/event-A?access={event_token(1)}",
                 files={"file": ("photo.jpg", image.getvalue(), "image/jpeg")},
             )
 
@@ -79,11 +99,14 @@ class EventBindingTests(unittest.TestCase):
     def test_event_slug_cannot_break_out_of_inline_script(self):
         slug = '</script><script>alert(1)</script>'
         event_db = Mock()
-        event_query = event_db.table.return_value.select.return_value.eq.return_value
+        event_query = event_db.table.return_value.select.return_value.eq.return_value.limit.return_value
         event_query.execute.return_value = SimpleNamespace(data=[{"id": 1}])
 
-        with patch.object(events, "get_supabase", return_value=event_db):
-            page = events.event_page(slug)
+        with (
+            patch.dict(os.environ, TEST_ENV),
+            patch.object(events, "get_supabase", return_value=event_db),
+        ):
+            page = events.event_page(slug, event_token(1))
 
         html = page.body.decode()
         escaped_slug = json.dumps(slug).replace("<", "\\u003c").replace(">", "\\u003e")

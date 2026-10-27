@@ -1,4 +1,5 @@
 import { state } from './state.js?v=5'
+import { withEventAccess } from './guest_access.js?v=1'
 
 export async function loadGallery(
     reset = false
@@ -56,7 +57,7 @@ export async function loadGallery(
     try {
         const response =
             await fetch(
-                `/api/events/${
+                withEventAccess(`/api/events/${
                     encodeURIComponent(
                         eventSlug
                     )
@@ -64,7 +65,7 @@ export async function loadGallery(
                     state.galleryPageSize
                 }&offset=${
                     state.galleryOffset
-                }`
+                }`)
             )
 
         const data =
@@ -200,11 +201,11 @@ function createGalleryItem(item) {
             document.createElement('img')
 
         image.src =
-            `/media/${
+            withEventAccess(`/media/${
                 encodeURIComponent(
                     item.id
                 )
-            }/thumbnail`
+            }/thumbnail`)
 
         image.alt =
             'Fotografie din galerie'
@@ -226,11 +227,11 @@ function createGalleryItem(item) {
         'gallery-item-download'
 
     downloadLink.href =
-        `/media/${
+        withEventAccess(`/media/${
             encodeURIComponent(
                 item.id
             )
-        }/download`
+        }/download`)
 
     downloadLink.setAttribute(
         'aria-label',
@@ -293,13 +294,13 @@ export function openGalleryModal(item) {
         encodeURIComponent(item.id)
 
     const originalUrl =
-        `/media/${encodedId}`
+        withEventAccess(`/media/${encodedId}`)
 
     const previewUrl =
-        `/media/${encodedId}/preview`
+        withEventAccess(`/media/${encodedId}/preview`)
 
     const downloadUrl =
-        `/media/${encodedId}/download`
+        withEventAccess(`/media/${encodedId}/download`)
 
     const isVideo =
         item.content_type?.startsWith(

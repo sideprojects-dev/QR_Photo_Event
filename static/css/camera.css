@@ -90,6 +90,10 @@ body.capture-ready .camera-controls {
   flex: 1;
 }
 
+.gallery-upload-button {
+  width: 100%;
+}
+
 .captured-actions {
   display: none;
 }

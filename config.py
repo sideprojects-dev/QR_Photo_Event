@@ -17,6 +17,7 @@ REQUIRED_SETTINGS = (
     "SUPABASE_SERVICE_ROLE_KEY",
     "FOLDER_ID",
     "GOOGLE_DRIVE_TOKEN_JSON",
+    "QR_ACCESS_SECRET",
 )
 
 
@@ -37,6 +38,9 @@ def validate_config(environ=None):
         raise RuntimeError(
             "ADMIN_PASSWORD must have at least 12 characters and cannot be the default password"
         )
+
+    if len(values["QR_ACCESS_SECRET"]) < 32:
+        raise RuntimeError("QR_ACCESS_SECRET must have at least 32 characters")
 
     try:
         url = urlsplit(values["SUPABASE_URL"])

@@ -274,6 +274,8 @@
     })
 
     async function loadLocations() {
+      const loginError = document.getElementById('loginError')
+      loginError.style.display = 'none'
       try {
         const response = await fetch('/api/locations', {
           headers: {
@@ -282,23 +284,25 @@
         })
 
         if (response.status === 401) {
-          document.getElementById('loginError').style.display = 'block'
+          loginError.textContent = 'Parolă greșită'
+          loginError.style.display = 'block'
           adminPassword = ''
           return
         }
 
         if (!response.ok) {
-          throw new Error('Nu s-au putut încărca locațiile.')
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.detail || 'Nu s-au putut încărca locațiile.')
         }
 
-        document.getElementById('loginError').style.display = 'none'
         document.getElementById('loginSection').style.display = 'none'
         document.getElementById('adminSection').style.display = 'block'
 
         const data = await response.json()
         renderLocations(data.locations)
       } catch (err) {
-        alert('Eroare: ' + err.message)
+        loginError.textContent = 'Eroare: ' + err.message
+        loginError.style.display = 'block'
       }
     }
 
@@ -511,9 +515,9 @@
 
           <br>
 
-          <span class="event-url">
-            https://qr-photo-event.onrender.com/event/${escapeHtml(event.slug)}
-          </span>
+          <a class="event-url" href="${escapeHtml(event.guest_url)}" target="_blank" rel="noopener noreferrer">
+            ${window.location.origin}${escapeHtml(event.guest_url)}
+          </a>
 
           <br>
 
@@ -603,8 +607,26 @@
       }
     }
 
-    function downloadQR(slug) {
-      window.open(`/api/qr/${encodeURIComponent(slug)}`, '_blank')
+    async function downloadQR(slug) {
+      try {
+        const response = await fetch(`/api/qr/${encodeURIComponent(slug)}`, {
+          headers: { 'x-admin-password': adminPassword }
+        })
+        if (!response.ok) {
+          throw new Error('Nu s-a putut genera codul QR.')
+        }
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${slug}_qr.png`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+      } catch (err) {
+        alert('Eroare: ' + err.message)
+      }
     }
 
     async function activateEvent(slug) {

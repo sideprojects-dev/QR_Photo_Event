@@ -10,6 +10,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from PIL import Image, ImageOps
 
 from deps import get_supabase
+from guest_access import has_event_access
 from google_drive import (
     get_drive_service,
     get_drive_file_size,
@@ -102,11 +103,7 @@ def get_event_media(
     result = (
         supabase
         .table("media")
-        .select(
-            "id, event_id, drive_file_id, thumbnail_drive_file_id, "
-            "preview_drive_file_id, file_name, content_type, "
-            "size_bytes, created_at"
-        )
+        .select("id, content_type, created_at")
         .eq("event_id", event_id)
         .order("created_at", desc=True)
         .range(offset, offset + limit)
@@ -122,11 +119,21 @@ def get_event_media(
     return items, has_more
 
 
+def public_media_record(record):
+    return {
+        key: record[key]
+        for key in ("id", "content_type", "created_at")
+        if key in record
+    }
+
+
 @router.get("/api/events/{slug}/media")
 def get_event_media_endpoint(
     slug: str,
+    response: Response,
     limit: int = 30,
-    offset: int = 0
+    offset: int = 0,
+    access: str | None = None
 ):
     if limit < 1 or limit > 100:
         raise HTTPException(
@@ -142,6 +149,8 @@ def get_event_media_endpoint(
 
     supabase = get_supabase()
     event = get_event_by_slug(supabase, slug)
+    if not has_event_access(event["id"], access):
+        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
 
     items, has_more = get_event_media(
         supabase=supabase,
@@ -150,8 +159,11 @@ def get_event_media_endpoint(
         offset=offset
     )
 
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+
     return {
-        "items": items,
+        "items": [public_media_record(item) for item in items],
         "pagination": {
             "limit": limit,
             "offset": offset,
@@ -182,6 +194,13 @@ def get_media_by_id(supabase, media_id: str):
         )
 
     return result.data[0]
+
+
+def get_accessible_media(supabase, media_id: str, access: str | None):
+    record = get_media_by_id(supabase, media_id)
+    if not has_event_access(record["event_id"], access):
+        raise HTTPException(status_code=404, detail="Media not found.")
+    return record
 
 
 def create_image_variant(
@@ -287,7 +306,6 @@ def stream_drive_file(
     drive,
     drive_file_id: str,
     media_type: str,
-    cache_seconds: int,
     content_disposition: str | None = None
 ):
     buffer = download_drive_file_to_buffer(
@@ -296,8 +314,8 @@ def stream_drive_file(
     )
 
     headers = {
-        "Cache-Control":
-            f"public, max-age={cache_seconds}"
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex, nofollow",
     }
 
     if content_disposition:
@@ -311,11 +329,12 @@ def stream_drive_file(
 
 
 @router.get("/media/{media_id}/thumbnail")
-def stream_media_thumbnail(media_id: str):
+def stream_media_thumbnail(media_id: str, access: str | None = None):
     supabase = get_supabase()
-    media_record = get_media_by_id(
+    media_record = get_accessible_media(
         supabase=supabase,
-        media_id=media_id
+        media_id=media_id,
+        access=access
     )
 
     if not media_record["content_type"].startswith("image/"):
@@ -334,24 +353,23 @@ def stream_media_thumbnail(media_id: str):
         return stream_drive_file(
             drive=drive,
             drive_file_id=thumbnail_drive_file_id,
-            media_type="image/jpeg",
-            cache_seconds=86400
+            media_type="image/jpeg"
         )
 
     return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
-        media_type=media_record["content_type"],
-        cache_seconds=3600
+        media_type=media_record["content_type"]
     )
 
 
 @router.get("/media/{media_id}/preview")
-def stream_media_preview(media_id: str):
+def stream_media_preview(media_id: str, access: str | None = None):
     supabase = get_supabase()
-    media_record = get_media_by_id(
+    media_record = get_accessible_media(
         supabase=supabase,
-        media_id=media_id
+        media_id=media_id,
+        access=access
     )
 
     if not media_record["content_type"].startswith("image/"):
@@ -370,24 +388,23 @@ def stream_media_preview(media_id: str):
         return stream_drive_file(
             drive=drive,
             drive_file_id=preview_drive_file_id,
-            media_type="image/jpeg",
-            cache_seconds=86400
+            media_type="image/jpeg"
         )
 
     return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
-        media_type=media_record["content_type"],
-        cache_seconds=3600
+        media_type=media_record["content_type"]
     )
 
 
 @router.get("/media/{media_id}/download")
-def download_media(media_id: str):
+def download_media(media_id: str, access: str | None = None):
     supabase = get_supabase()
-    media_record = get_media_by_id(
+    media_record = get_accessible_media(
         supabase=supabase,
-        media_id=media_id
+        media_id=media_id,
+        access=access
     )
 
     drive = get_drive_service()
@@ -396,7 +413,6 @@ def download_media(media_id: str):
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
         media_type=media_record["content_type"],
-        cache_seconds=3600,
         content_disposition=(
             f'attachment; filename="{media_record["file_name"]}"'
         )
@@ -507,7 +523,6 @@ def stream_video_with_range(
             drive=drive,
             drive_file_id=media_record["drive_file_id"],
             media_type=media_record["content_type"],
-            cache_seconds=3600,
             content_disposition=(
                 f'inline; filename="{media_record["file_name"]}"'
             )
@@ -531,8 +546,8 @@ def stream_video_with_range(
             f"bytes {start}-{end}/{file_size}",
         "Content-Length":
             str(len(chunk)),
-        "Cache-Control":
-            "public, max-age=3600"
+        "Cache-Control": "private, no-store",
+        "X-Robots-Tag": "noindex, nofollow"
     }
 
     return Response(
@@ -546,12 +561,14 @@ def stream_video_with_range(
 @router.get("/media/{media_id}")
 def stream_media(
     media_id: str,
-    request: Request
+    request: Request,
+    access: str | None = None
 ):
     supabase = get_supabase()
-    media_record = get_media_by_id(
+    media_record = get_accessible_media(
         supabase=supabase,
-        media_id=media_id
+        media_id=media_id,
+        access=access
     )
 
     drive = get_drive_service()
@@ -567,7 +584,6 @@ def stream_media(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
         media_type=media_record["content_type"],
-        cache_seconds=3600,
         content_disposition=(
             f'inline; filename="{media_record["file_name"]}"'
         )
@@ -577,7 +593,8 @@ def stream_media(
 @router.post("/upload/{slug}")
 async def upload(
     slug: str,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    access: str | None = None
 ):
     if (
         not file.content_type
@@ -613,6 +630,8 @@ async def upload(
         supabase,
         slug
     )
+    if not has_event_access(event["id"], access):
+        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
 
     extension = EXTENSION_BY_MIME[file.content_type]
 
@@ -792,14 +811,5 @@ async def upload(
 
     return {
         "success": True,
-        "media": media_record or {
-            "drive_file_id": drive_file_id,
-            "thumbnail_drive_file_id":
-                thumbnail_drive_file_id,
-            "preview_drive_file_id":
-                preview_drive_file_id,
-            "file_name": unique_name,
-            "content_type": file.content_type,
-            "size_bytes": file_size
-        }
+        "media": public_media_record(media_record) if media_record else None
     }

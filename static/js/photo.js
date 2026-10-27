@@ -1,5 +1,5 @@
 import { state } from './state.js?v=5'
-import { stopCamera } from './camera.js?v=7'
+import { stopCamera } from './camera.js?v=8'
 import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
 
 export async function takePhoto() {
@@ -360,7 +360,7 @@ function setCapturedPhoto(blob) {
     showPhotoPreview(blob)
 }
 
-function showPhotoPreview(blob) {
+export function showPhotoPreview(blob) {
     const viewfinder =
         document.getElementById(
             'viewfinder'

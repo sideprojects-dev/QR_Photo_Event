@@ -13,6 +13,9 @@ Configurează local un fișier `.env` în folderul proiectului. `.env.example`
 arată numele setărilor obligatorii, fără credențiale reale. `ADMIN_PASSWORD`
 trebuie să fie o parolă unică de cel puțin 12 caractere. Fișierele `.env`,
 `.venv` și credențialele Google sunt excluse din Git prin `.gitignore`.
+`QR_ACCESS_SECRET` este un secret aleatoriu de cel puțin 32 de caractere,
+păstrat doar în `.env` și în setările serverului unde rulează aplicația.
+Schimbarea lui invalidează linkurile și codurile QR deja generate.
 
 Rulează testele și apoi serverul:
 
@@ -22,7 +25,7 @@ Rulează testele și apoi serverul:
 ```
 
 Dacă ai Node.js instalat, testele pentru previzualizarea din browser se rulează
-cu `node --test tests/test_preview_urls.mjs tests/test_mirrored_video.mjs`.
+cu `node --test tests/test_preview_urls.mjs tests/test_mirrored_video.mjs tests/test_gallery_upload.mjs`.
 
 La pornire, aplicația verifică prezența setărilor obligatorii și formatul
 adresei Supabase. Acest control nu verifică încă accesul efectiv la Supabase
@@ -32,3 +35,29 @@ Uploadul acceptă imagini JPEG, PNG și WebP de cel mult 25 MB și video MP4 sau
 WebM de cel mult 250 MB. Controlul actual al antetului video nu verifică dacă
 întregul fișier poate fi redat.
 Cererea completă de upload, inclusiv formularul, este limitată la 251 MB.
+
+Codurile QR se descarcă din panoul Admin al serverului pe care va fi folosită
+aplicația. Codul permanent al locației duce la evenimentul ei activ. Linkul
+conține un cod de acces și poate fi distribuit mai departe de oricine îl are.
+Pagina, galeria, fișierele și încărcarea verifică acel cod la fiecare cerere.
+Linkurile vechi, fără cod de acces, nu mai funcționează și trebuie regenerate.
+Pe Render, URL-urile absolute din codurile QR folosesc variabila furnizată de
+platformă `RENDER_EXTERNAL_URL` (HTTPS). Local, se folosește adresa cererii.
+Pornirea din `Dockerfile` dezactivează jurnalul automat al cererilor Uvicorn;
+erorile aplicației rămân vizibile.
+
+## Reautorizarea Google Drive
+
+Dacă fotografiile din galerie dau eroare și conexiunea Google raportează
+`invalid_grant`, oprește Uvicorn cu `Ctrl+C`, apoi rulează local:
+
+```powershell
+& '.\.venv\Scripts\python.exe' reauthorize_drive.py
+```
+
+Se deschide autentificarea Google. Alege contul care deține fișierele din Drive.
+Scriptul verifică accesul și salvează noul token numai în `.env`, apoi trebuie
+repornit Uvicorn. Scriptul folosește temporar portul din `REDIRECT_URI`, de
+aceea Uvicorn trebuie oprit. Dacă aplicația rulează și pe Render, variabila
+`GOOGLE_DRIVE_TOKEN_JSON` de acolo trebuie actualizată separat. Vechile rute
+`/auth/login` și `/auth/callback` nu mai sunt folosite.

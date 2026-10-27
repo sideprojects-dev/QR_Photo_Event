@@ -1,11 +1,13 @@
 import io
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
+from httpx import ConnectError
 import qrcode
 
 from config import FOLDER_ID
 from deps import get_supabase, require_admin
+from guest_access import absolute_guest_url, event_path, has_location_access, master_path
 from google_drive import get_drive_service
 
 router = APIRouter(tags=["locations"])
@@ -13,28 +15,11 @@ router = APIRouter(tags=["locations"])
 
 @router.get("/event/master")
 def master_redirect():
-    # QR-ul master este printat o singură dată și redirecționează
-    # mereu către evenimentul curent marcat drept "active" în Supabase.
-    supabase = get_supabase()
-    result = (
-        supabase
-        .table("events")
-        .select("slug")
-        .eq("status", "active")
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    if not result.data:
-        return HTMLResponse("<h1>Niciun eveniment activ momentan</h1>", status_code=404)
-
-    active_slug = result.data[0]["slug"]
-    return RedirectResponse(f"/event/{active_slug}")
+    return HTMLResponse("<h1>Codul QR nu este disponibil</h1>", status_code=404)
 
 
 @router.get("/event/master/{location_slug}")
-def master_redirect_location(location_slug: str):
+def master_redirect_location(location_slug: str, access: str | None = None):
     # QR permanent al unei locații: nu se schimbă niciodată, doar
     # redirecționează mereu către evenimentul activ curent al locației.
     supabase = get_supabase()
@@ -52,11 +37,13 @@ def master_redirect_location(location_slug: str):
         return HTMLResponse("<h1>Locația nu a fost găsită</h1>", status_code=404)
 
     location_id = location_result.data[0]["id"]
+    if not has_location_access(location_id, access):
+        return HTMLResponse("<h1>Locația nu a fost găsită</h1>", status_code=404)
 
     event_result = (
         supabase
         .table("events")
-        .select("slug")
+        .select("id, slug")
         .eq("location_id", location_id)
         .eq("status", "active")
         .limit(1)
@@ -66,8 +53,11 @@ def master_redirect_location(location_slug: str):
     if not event_result.data:
         return HTMLResponse("<h1>Niciun eveniment activ momentan la această locație</h1>", status_code=404)
 
-    active_slug = event_result.data[0]["slug"]
-    return RedirectResponse(f"/event/{active_slug}")
+    event = event_result.data[0]
+    return RedirectResponse(
+        event_path(event["slug"], event["id"]),
+        headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"}
+    )
 
 
 @router.post("/api/locations", dependencies=[Depends(require_admin)])
@@ -144,13 +134,22 @@ async def create_location(location_name: str):
 def get_locations():
     supabase = get_supabase()
 
-    result = (
-        supabase
-        .table("locations")
-        .select("*")
-        .order("created_at", desc=False)
-        .execute()
-    )
+    try:
+        result = (
+            supabase
+            .table("locations")
+            .select("*")
+            .order("created_at", desc=False)
+            .execute()
+        )
+    except ConnectError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Nu se poate conecta la Supabase. Verifică dacă proiectul "
+                "este activ și dacă SUPABASE_URL din .env este corect."
+            ),
+        ) from exc
 
     return {
         "locations": result.data
@@ -158,7 +157,7 @@ def get_locations():
 
 
 @router.get("/api/locations/{location_slug}/events", dependencies=[Depends(require_admin)])
-def get_location_events(location_slug: str):
+def get_location_events(location_slug: str, response: Response):
     supabase = get_supabase()
 
     location_result = (
@@ -187,14 +186,18 @@ def get_location_events(location_slug: str):
         .execute()
     )
 
+    response.headers["Cache-Control"] = "private, no-store"
     return {
         "location": location,
-        "events": events_result.data
+        "events": [
+            {**event, "guest_url": event_path(event["slug"], event["id"])}
+            for event in events_result.data
+        ]
     }
 
 
 @router.get("/api/locations/{location_slug}/master-qr", dependencies=[Depends(require_admin)])
-def get_location_master_qr(location_slug: str):
+def get_location_master_qr(location_slug: str, request: Request):
     supabase = get_supabase()
 
     location_result = (
@@ -211,7 +214,7 @@ def get_location_master_qr(location_slug: str):
 
     # QR-ul conține URL-ul permanent /event/master/{location_slug} — nu
     # depinde de niciun eveniment anume, deci nu se schimbă niciodată.
-    url = f"https://qr-photo-event.onrender.com/event/master/{location_slug}"
+    url = absolute_guest_url(request, master_path(location_slug, location_result.data[0]["id"]))
     qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
     qr.add_data(url)
     qr.make(fit=True)

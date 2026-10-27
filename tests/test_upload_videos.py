@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from routers import media
+from guest_access import event_token
 
 
 TEST_ENV = {
@@ -14,6 +15,7 @@ TEST_ENV = {
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-key",
     "FOLDER_ID": "test-drive-folder",
     "GOOGLE_DRIVE_TOKEN_JSON": '{"token":"test-token"}',
+    "QR_ACCESS_SECRET": "test-secret-with-at-least-32-characters",
 }
 
 
@@ -33,7 +35,7 @@ class VideoUploadTests(unittest.TestCase):
             TestClient(app) as client,
         ):
             response = client.post(
-                "/upload/test-event",
+                f"/upload/test-event?access={event_token(1)}",
                 files={"file": (filename, data, content_type)},
             )
             return response, drive_service.call_count, upload_original

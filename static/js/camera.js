@@ -183,10 +183,19 @@ export async function startCamera({ withAudio = false } = {}) {
             videoConstraints.facingMode = { ideal: state.facingMode }
         }
 
-        state.stream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
             video: videoConstraints,
             audio: withAudio
         })
+
+        // Selectorul de fișiere poate readuce pagina în prim-plan în timp
+        // ce cererea pentru cameră este încă în curs.
+        if (state.capturedFile || document.hidden) {
+            stream.getTracks().forEach(track => track.stop())
+            return
+        }
+
+        state.stream = stream
 
         const videoTrack = state.stream.getVideoTracks()[0]
         const settings = videoTrack.getSettings()

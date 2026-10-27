@@ -1,10 +1,14 @@
 import { state } from './state.js?v=5'
-import { startCamera } from './camera.js?v=7'
-import { loadGallery } from './gallery.js?v=6'
+import { startCamera } from './camera.js?v=8'
+import { loadGallery } from './gallery.js?v=7'
 import { clearPreviewObjectUrl } from './preview_urls.js?v=1'
+import { withEventAccess } from './guest_access.js?v=1'
 
 export async function sendFile() {
-    if (!state.capturedFile) {
+    if (
+        !state.capturedFile ||
+        document.body.classList.contains('uploading')
+    ) {
         return
     }
 
@@ -26,11 +30,15 @@ export async function sendFile() {
     const retakeButton =
         document.getElementById('btnRetake')
 
+    const galleryButton =
+        document.getElementById('btnUploadFromGallery')
+
     message.hidden = true
     message.textContent = ''
 
     sendButton.disabled = true
     retakeButton.disabled = true
+    galleryButton.disabled = true
     document.body.classList.add('uploading')
 
     showUploadProgress(
@@ -48,9 +56,9 @@ export async function sendFile() {
     try {
         const result =
             await uploadWithProgress(
-                `/upload/${
+                withEventAccess(`/upload/${
                     encodeURIComponent(eventSlug)
-                }`,
+                }`),
                 formData,
                 percent => {
                     if (percent >= 100) {
@@ -106,6 +114,7 @@ export async function sendFile() {
         document.body.classList.remove(
             'uploading'
         )
+        galleryButton.disabled = false
     }
 }
 
@@ -297,6 +306,10 @@ function hideUploadProgress() {
 function resetCapturedMedia() {
     state.capturedFile = null
     state.recordedChunks = []
+
+    document.getElementById(
+        'galleryFileInput'
+    ).value = ''
 
     const sendButton =
         document.getElementById(

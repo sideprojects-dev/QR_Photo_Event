@@ -3,26 +3,31 @@ import {
     startCamera,
     stopCamera,
     flipCamera
-} from './camera.js?v=7'
+} from './camera.js?v=8'
 
-import { takePhoto } from './photo.js?v=12'
+import { takePhoto } from './photo.js?v=13'
 
 import {
     toggleVideo,
     stopRecordingForBackground
-} from './video.js?v=12'
+} from './video.js?v=13'
 
 import {
     sendFile,
     retakeCapture
-} from './upload.js?v=10'
+} from './upload.js?v=12'
+
+import {
+    openGalleryPicker,
+    handleGalleryFileChange
+} from './gallery_upload.js?v=1'
 
 import {
     loadGallery,
     loadMoreGallery,
     closeGalleryModal,
     bindGalleryModalEvents
-} from './gallery.js?v=6'
+} from './gallery.js?v=7'
 
 function bindControls() {
     document.getElementById(
@@ -44,6 +49,20 @@ function bindControls() {
     )?.addEventListener(
         'click',
         toggleVideo
+    )
+
+    document.getElementById(
+        'btnUploadFromGallery'
+    )?.addEventListener(
+        'click',
+        openGalleryPicker
+    )
+
+    document.getElementById(
+        'galleryFileInput'
+    )?.addEventListener(
+        'change',
+        handleGalleryFileChange
     )
 
     document.getElementById(
@@ -89,7 +108,7 @@ function bindMediaLifecycle() {
                 return
             }
 
-            // Dacă avem deja o poză/video făcut(ă), păstrăm preview-ul.
+            // Dacă avem deja o poză/video făcut, păstrăm preview-ul.
             if (
                 state.capturedFile ||
                 state.isRecording

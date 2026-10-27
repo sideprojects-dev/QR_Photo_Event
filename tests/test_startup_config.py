@@ -16,6 +16,7 @@ VALID_ENV = {
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-key",
     "FOLDER_ID": "test-drive-folder",
     "GOOGLE_DRIVE_TOKEN_JSON": '{"token":"test-token"}',
+    "QR_ACCESS_SECRET": "test-secret-with-at-least-32-characters",
 }
 
 

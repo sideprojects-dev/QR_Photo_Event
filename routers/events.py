@@ -3,25 +3,27 @@ import io as io_module
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 import qrcode
 
 from deps import get_supabase, require_admin
+from guest_access import absolute_guest_url, event_path, has_event_access
 from google_drive import get_drive_service
 
 router = APIRouter(tags=["events"])
 
 
 @router.get("/event/{slug}")
-def event_page(slug: str):
+def event_page(slug: str, access: str | None = None):
     supabase = get_supabase()
 
     result = (
         supabase
         .table("events")
-        .select("*")
+        .select("id")
         .eq("slug", slug)
+        .limit(1)
         .execute()
     )
 
@@ -30,6 +32,9 @@ def event_page(slug: str):
             "<h1>Eveniment negăsit</h1>",
             status_code=404
         )
+
+    if not has_event_access(result.data[0]["id"], access):
+        return HTMLResponse("<h1>Eveniment negăsit</h1>", status_code=404)
 
     with open(
         "static/index.html",
@@ -76,16 +81,21 @@ def event_page(slug: str):
         f'''
         <script>
             window.EVENT_SLUG = {event_slug_json};
+            window.EVENT_ACCESS = {json.dumps(access)};
         </script>
         </body>
         '''
     )
 
-    return HTMLResponse(html)
+    return HTMLResponse(html, headers={
+        "Cache-Control": "private, no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Robots-Tag": "noindex, nofollow",
+    })
 
 
 @router.post("/api/create-event", dependencies=[Depends(require_admin)])
-async def api_create_event(event_name: str, location_slug: str):
+async def api_create_event(event_name: str, location_slug: str, request: Request, response: Response):
     event_name = event_name.strip()
     location_slug = location_slug.strip()
 
@@ -200,10 +210,11 @@ async def api_create_event(event_name: str, location_slug: str):
 
         raise
 
+    response.headers["Cache-Control"] = "private, no-store"
     return {
         "success": True,
         "slug": slug,
-        "url": f"https://qr-photo-event.onrender.com/event/{slug}",
+        "url": absolute_guest_url(request, event_path(slug, result.data[0]["id"])),
         "folder_id": folder_id,
         "location_id": location_id
     }
@@ -267,10 +278,17 @@ def get_events():
     return {"events": result.data}
 
 
-@router.get("/api/qr/{slug}")
-def get_qr(slug: str):
+@router.get("/api/qr/{slug}", dependencies=[Depends(require_admin)])
+def get_qr(slug: str, request: Request):
     # Generate QR and return as image
-    url = f"https://qr-photo-event.onrender.com/event/{slug}"
+    supabase = get_supabase()
+    result = (
+        supabase.table("events").select("id")
+        .eq("slug", slug).limit(1).execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
+    url = absolute_guest_url(request, event_path(slug, result.data[0]["id"]))
     qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
     qr.add_data(url)
     qr.make(fit=True)

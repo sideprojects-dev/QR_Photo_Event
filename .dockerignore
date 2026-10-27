@@ -11,6 +11,8 @@ __pycache__
 
 .env
 .env.*
+**/.env
+**/.env.*
 
 .vscode
 .idea
@@ -21,3 +23,22 @@ Thumbs.db
 client_secret.json
 token.json
 credentials.json
+client_secrets.json
+client_secret*.json
+google_credentials*.json
+google-credentials*.json
+*service_account*.json
+*service-account*.json
+code_verifier.txt
+flow_state.pkl
+**/client_secret.json
+**/client_secret*.json
+**/token.json
+**/credentials.json
+**/client_secrets.json
+**/google_credentials*.json
+**/google-credentials*.json
+**/*service_account*.json
+**/*service-account*.json
+**/code_verifier.txt
+**/flow_state.pkl

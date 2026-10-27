@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 
@@ -13,7 +13,7 @@ class SlugValidationTests(unittest.TestCase):
             with self.subTest(name=name):
                 with patch.object(events, "get_supabase") as get_supabase:
                     with self.assertRaises(HTTPException) as error:
-                        asyncio.run(events.api_create_event(name, "test-location"))
+                        asyncio.run(events.api_create_event(name, "test-location", Mock(), Mock()))
                 self.assertEqual(error.exception.status_code, 400)
                 get_supabase.assert_not_called()
 

@@ -2,7 +2,7 @@ import { state } from './state.js?v=5'
 import {
     startCamera,
     stopCamera
-} from './camera.js?v=7'
+} from './camera.js?v=8'
 import { replacePreviewObjectUrl } from './preview_urls.js?v=1'
 import { createMirroredVideoStream } from './mirrored_video.js?v=1'
 
@@ -169,6 +169,10 @@ async function startRecording() {
     ).disabled = true
 
     document.getElementById(
+        'btnUploadFromGallery'
+    ).disabled = true
+
+    document.getElementById(
         'message'
     ).textContent =
         'Se înregistrează...'
@@ -248,6 +252,16 @@ function resetRecordingButtons() {
         flipButton.disabled =
             false
     }
+
+    const galleryButton =
+        document.getElementById(
+            'btnUploadFromGallery'
+        )
+
+    if (galleryButton) {
+        galleryButton.disabled =
+            false
+    }
 }
 
 function buildRecordedVideo() {
@@ -292,6 +306,10 @@ function buildRecordedVideo() {
             { type: fileMimeType }
         )
 
+    showVideoPreview(blob)
+}
+
+export function showVideoPreview(blob) {
     const viewfinder =
         document.getElementById(
             'viewfinder'

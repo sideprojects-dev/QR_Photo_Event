@@ -8,6 +8,7 @@ from PIL import Image
 
 from main import app
 from routers import media
+from guest_access import event_token
 
 
 TEST_ENV = {
@@ -16,6 +17,7 @@ TEST_ENV = {
     "SUPABASE_SERVICE_ROLE_KEY": "test-service-key",
     "FOLDER_ID": "test-drive-folder",
     "GOOGLE_DRIVE_TOKEN_JSON": '{"token":"test-token"}',
+    "QR_ACCESS_SECRET": "test-secret-with-at-least-32-characters",
 }
 
 
@@ -33,7 +35,7 @@ class ImageUploadTests(unittest.TestCase):
             TestClient(app) as client,
         ):
             response = client.post(
-                "/upload/test-event",
+                f"/upload/test-event?access={event_token(1)}",
                 files={"file": ("photo.jpg", data, content_type)},
             )
             self.assertEqual(drive_service.call_count, 0)
@@ -74,15 +76,23 @@ class ImageUploadTests(unittest.TestCase):
             patch.object(media, "upload_file_to_drive", return_value="original") as upload_original,
             patch.object(media, "get_or_create_child_folder", return_value="variants-folder"),
             patch.object(media, "upload_bytes_to_drive", return_value="variant"),
-            patch.object(media, "save_media_record", return_value={"id": 1}),
+            patch.object(media, "save_media_record", return_value={
+                "id": 1,
+                "drive_file_id": "private-original-id",
+                "content_type": "image/jpeg",
+            }),
             TestClient(app) as client,
         ):
             response = client.post(
-                "/upload/test-event",
+                f"/upload/test-event?access={event_token(1)}",
                 files={"file": ("photo.jpg", buffer.getvalue(), "image/jpeg")},
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["media"], {
+            "id": 1,
+            "content_type": "image/jpeg",
+        })
         upload_original.assert_called_once()
 
 
