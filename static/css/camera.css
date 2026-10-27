@@ -1,9 +1,10 @@
 .media-frame {
   position: relative;
   width: 100%;
+  aspect-ratio: 3 / 4;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  background: #000;
+  background: #202422;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
@@ -110,14 +111,20 @@ body.photo-selection-ready .media-frame {
 #viewfinder,
 #preview,
 #previewVideo {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  height: 100%;
   object-fit: cover;
-  background: #000;
 }
 
 #viewfinder {
   display: block;
+  opacity: 0;
+}
+
+body.camera-ready #viewfinder {
+  opacity: 1;
 }
 
 #preview,

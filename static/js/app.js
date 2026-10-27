@@ -3,7 +3,7 @@ import {
     startCamera,
     stopCamera,
     flipCamera
-} from './camera.js?v=9'
+} from './camera.js?v=10'
 
 import { takePhoto } from './photo.js?v=14'
 

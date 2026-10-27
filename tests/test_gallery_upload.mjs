@@ -14,7 +14,7 @@ import {
     clearPreviewObjectUrl,
     clearSelectionPreviewUrls
 } from '../static/js/preview_urls.js?v=2'
-import { startCamera } from '../static/js/camera.js?v=9'
+import { startCamera } from '../static/js/camera.js?v=10'
 
 function selectedFile(name, type, size = 1024) {
     return new File([new Uint8Array(size)], name, { type })
