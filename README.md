@@ -122,6 +122,24 @@ apeluri Supabase separate. Indexul unic împiedică două evenimente active în
 aceeași locație, iar funcția blochează doar rândul locației vizate, astfel că
 activările din locații diferite pot continua independent.
 
+Testele PostgreSQL locale din `tests/test_atomic_event_postgres.py` folosesc o
+schemă minimă cu coloanele întâlnite în cod. Ele pornesc numai dacă există un
+container `postgres:16-alpine` numit `qr-h6-pg-test`, fără rețea, porturi sau
+volume conectate la gazdă. Creează și elimină baze de date temporare numai în
+acel container. De exemplu, în PowerShell:
+
+```powershell
+docker run --rm --name qr-h6-pg-test --network none -e POSTGRES_PASSWORD=local-h6-only -d postgres:16-alpine
+$env:H6_PG_CONTAINER = 'qr-h6-pg-test'
+& '.\.venv\Scripts\python.exe' -m unittest discover -s tests -p test_atomic_event_postgres.py -v
+Remove-Item Env:H6_PG_CONTAINER
+docker stop qr-h6-pg-test
+```
+
+Aceste teste confirmă comportamentul în PostgreSQL, dar nu confirmă că schema
+reală sau permisiunile proiectului Supabase sunt identice. Verificările de
+mai sus rămân obligatorii înainte de aplicarea migrării.
+
 ## Reautorizarea Google Drive
 
 Dacă fotografiile din galerie dau eroare și conexiunea Google raportează
