@@ -6,7 +6,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse, Response
-from googleapiclient.http import MediaIoBaseDownload
 from PIL import Image, ImageOps
 
 from deps import get_supabase
@@ -22,6 +21,7 @@ from google_drive import (
 from upload_limits import MAX_IMAGE_BYTES, MAX_VIDEO_BYTES
 
 router = APIRouter(tags=["media"])
+STREAM_CHUNK_BYTES = 1024 * 1024
 
 THUMBNAIL_FOLDER_NAME = "_thumbnails"
 PREVIEW_FOLDER_NAME = "_previews"
@@ -91,7 +91,41 @@ def save_media_record(
         .execute()
     )
 
-    return result.data[0] if result.data else None
+    record = result.data[0] if result.data else None
+    return record if valid_saved_media(record, event_id, drive_file_id) else None
+
+
+def valid_saved_media(record, event_id, drive_file_id: str) -> bool:
+    return (
+        isinstance(record, dict)
+        and bool(record.get("id"))
+        and str(record.get("event_id")) == str(event_id)
+        and record.get("drive_file_id") == drive_file_id
+    )
+
+
+def find_saved_media(supabase, event_id, drive_file_id: str):
+    result = (
+        supabase.table("media")
+        .select("id, event_id, drive_file_id, content_type, created_at")
+        .eq("drive_file_id", drive_file_id).limit(2).execute()
+    )
+    records = result.data or []
+    if not records:
+        return None
+    if len(records) != 1 or not valid_saved_media(records[0], event_id, drive_file_id):
+        raise RuntimeError("Media insert result could not be verified")
+    return records[0]
+
+
+def cleanup_created_drive_files(drive, file_ids) -> bool:
+    cleaned = True
+    for file_id in dict.fromkeys(file_id for file_id in file_ids if file_id):
+        try:
+            drive.files().delete(fileId=file_id).execute()
+        except Exception:
+            cleaned = False
+    return cleaned
 
 
 def get_event_media(
@@ -278,53 +312,48 @@ def validate_video_header(header: bytes, content_type: str) -> None:
         )
 
 
-def download_drive_file_to_buffer(
-    drive,
-    drive_file_id: str
-):
-    request = drive.files().get_media(
-        fileId=drive_file_id
-    )
-
-    buffer = io_module.BytesIO()
-
-    downloader = MediaIoBaseDownload(
-        buffer,
-        request
-    )
-
-    done = False
-
-    while not done:
-        _, done = downloader.next_chunk()
-
-    buffer.seek(0)
-    return buffer
+def iter_drive_range(drive_file_id: str, start: int, end: int):
+    """Request only bounded ranges; no Drive response is kept between yields."""
+    for offset in range(start, end + 1, STREAM_CHUNK_BYTES):
+        chunk_end = min(offset + STREAM_CHUNK_BYTES - 1, end)
+        # StreamingResponse may advance the iterator on another worker thread.
+        # Drive clients are thread-local, so acquire one on that thread.
+        chunk = download_file_range(
+            get_drive_service(), drive_file_id, offset, chunk_end
+        )
+        if len(chunk) != chunk_end - offset + 1:
+            raise RuntimeError("Google Drive returned an incomplete media range")
+        yield chunk
 
 
 def stream_drive_file(
     drive,
     drive_file_id: str,
     media_type: str,
-    content_disposition: str | None = None
+    content_disposition: str | None = None,
+    range_header: str | None = None,
+    file_size: int | None = None,
 ):
-    buffer = download_drive_file_to_buffer(
-        drive=drive,
-        drive_file_id=drive_file_id
-    )
-
+    if file_size is None:
+        file_size = get_drive_file_size(drive, drive_file_id)
+    file_size = int(file_size)
+    start, end = (parse_byte_range(range_header, file_size)
+                  if range_header else (0, file_size - 1))
     headers = {
         "Cache-Control": "private, no-store",
         "X-Robots-Tag": "noindex, nofollow",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(end - start + 1 if file_size else 0),
     }
-
     if content_disposition:
         headers["Content-Disposition"] = content_disposition
-
+    if range_header:
+        headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     return StreamingResponse(
-        buffer,
+        iter_drive_range(drive_file_id, start, end) if file_size else iter(()),
+        status_code=206 if range_header else 200,
         media_type=media_type,
-        headers=headers
+        headers=headers,
     )
 
 
@@ -425,41 +454,43 @@ def parse_byte_range(
     range_header: str,
     file_size: int
 ) -> tuple[int, int]:
-    if not range_header.startswith("bytes="):
-        raise HTTPException(
-            status_code=416,
-            detail="Invalid Range header."
-        )
+    unsatisfiable = HTTPException(
+        status_code=416, detail="Requested range is not satisfiable.",
+        headers={"Content-Range": f"bytes */{file_size}",
+                 "Accept-Ranges": "bytes"},
+    )
+    if not range_header.startswith("bytes=") or file_size <= 0:
+        raise unsatisfiable
 
     range_value = range_header.removeprefix("bytes=").strip()
 
     if "," in range_value:
-        raise HTTPException(
-            status_code=416,
-            detail="Multiple ranges are not supported."
-        )
+        raise unsatisfiable
 
     start_text, separator, end_text = range_value.partition("-")
 
     if not separator:
-        raise HTTPException(
-            status_code=416,
-            detail="Invalid Range header."
-        )
+        raise unsatisfiable
 
     try:
         if start_text:
+            if not start_text.isdecimal():
+                raise ValueError
             start = int(start_text)
 
             if start < 0 or start >= file_size:
                 raise ValueError
 
             if end_text:
+                if not end_text.isdecimal():
+                    raise ValueError
                 end = int(end_text)
             else:
                 end = file_size - 1
         else:
             # Suffix range, e.g. bytes=-500
+            if not end_text.isdecimal():
+                raise ValueError
             suffix_length = int(end_text)
 
             if suffix_length <= 0:
@@ -482,14 +513,7 @@ def parse_byte_range(
             raise ValueError
 
     except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=416,
-            detail="Requested range is not satisfiable.",
-            headers={
-                "Content-Range":
-                    f"bytes */{file_size}"
-            }
-        )
+        raise unsatisfiable
 
     return start, end
 
@@ -512,49 +536,13 @@ def stream_video_with_range(
     file_size = int(file_size)
     range_header = request.headers.get("range")
 
-    common_headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Disposition":
-            f'inline; filename="{media_record["file_name"]}"'
-    }
-
-    if not range_header:
-        return stream_drive_file(
-            drive=drive,
-            drive_file_id=media_record["drive_file_id"],
-            media_type=media_record["content_type"],
-            content_disposition=(
-                f'inline; filename="{media_record["file_name"]}"'
-            )
-        )
-
-    start, end = parse_byte_range(
-        range_header=range_header,
-        file_size=file_size
-    )
-
-    chunk = download_file_range(
+    return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
-        start=start,
-        end=end
-    )
-
-    headers = {
-        **common_headers,
-        "Content-Range":
-            f"bytes {start}-{end}/{file_size}",
-        "Content-Length":
-            str(len(chunk)),
-        "Cache-Control": "private, no-store",
-        "X-Robots-Tag": "noindex, nofollow"
-    }
-
-    return Response(
-        content=chunk,
-        status_code=206,
         media_type=media_record["content_type"],
-        headers=headers
+        content_disposition=f'inline; filename="{media_record["file_name"]}"',
+        range_header=range_header,
+        file_size=file_size,
     )
 
 
@@ -717,6 +705,8 @@ def upload(
             file_name=unique_name,
             folder_id=event["folder_id"]
         )
+        if not drive_file_id:
+            raise RuntimeError("Drive did not return a file ID")
 
         if thumbnail_bytes:
             try:
@@ -776,40 +766,51 @@ def upload(
                     flush=True
                 )
 
+    except Exception as exc:
+        cleaned = cleanup_created_drive_files(
+            drive, (preview_drive_file_id, thumbnail_drive_file_id, drive_file_id)
+        )
+        detail = (
+            "Încărcarea a eșuat; curățarea fișierelor din Drive necesită verificare manuală."
+            if not cleaned else "Încărcarea fișierului a eșuat."
+        )
+        raise HTTPException(status_code=503, detail=detail) from exc
+
+    try:
         media_record = save_media_record(
             supabase=supabase,
             event_id=event["id"],
             drive_file_id=drive_file_id,
-            thumbnail_drive_file_id=(
-                thumbnail_drive_file_id
-            ),
-            preview_drive_file_id=(
-                preview_drive_file_id
-            ),
+            thumbnail_drive_file_id=thumbnail_drive_file_id,
+            preview_drive_file_id=preview_drive_file_id,
             file_name=unique_name,
             content_type=file.content_type,
-            size_bytes=file_size
+            size_bytes=file_size,
         )
-
     except Exception:
-        for created_file_id in (
-            preview_drive_file_id,
-            thumbnail_drive_file_id,
-            drive_file_id
-        ):
-            if not created_file_id:
-                continue
+        media_record = None
 
-            try:
-                drive.files().delete(
-                    fileId=created_file_id
-                ).execute()
-            except Exception:
-                pass
-
-        raise
+    if media_record is None:
+        try:
+            media_record = find_saved_media(supabase, event["id"], drive_file_id)
+        except Exception as exc:
+            # The insert may have committed despite a failed response. Never
+            # delete a Drive file while its database state is unknown.
+            raise HTTPException(
+                status_code=503,
+                detail="Rezultatul salvării este neclar. Verifică manual Drive și baza de date."
+            ) from exc
+        if media_record is None:
+            cleaned = cleanup_created_drive_files(
+                drive, (preview_drive_file_id, thumbnail_drive_file_id, drive_file_id)
+            )
+            detail = (
+                "Salvarea a eșuat; curățarea din Drive necesită verificare manuală."
+                if not cleaned else "Salvarea materialului a eșuat."
+            )
+            raise HTTPException(status_code=503, detail=detail)
 
     return {
         "success": True,
-        "media": public_media_record(media_record) if media_record else None
+        "media": public_media_record(media_record)
     }
