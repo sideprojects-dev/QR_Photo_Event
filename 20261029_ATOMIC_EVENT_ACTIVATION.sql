@@ -21,9 +21,6 @@ BEGIN
 END;
 $check_existing_active_events$;
 
-CREATE UNIQUE INDEX events_slug_unique_idx
-    ON public.events (slug);
-
 CREATE UNIQUE INDEX events_one_active_per_location_idx
     ON public.events (location_id)
     WHERE status = 'active';

@@ -20,7 +20,7 @@ CREATE TABLE public.locations (
     folder_id text, created_at timestamp
 );
 CREATE TABLE public.events (
-    id bigint, slug text, name text,
+    id bigint, slug text CONSTRAINT events_slug_unique UNIQUE, name text,
     folder_id text, created_at timestamp, status text,
     location_id bigint
 );
@@ -183,6 +183,16 @@ class AtomicEventPostgresTests(unittest.TestCase):
                                 "DROP FUNCTION public.h6_reject_a2();")
 
     def test_unique_index_rejects_second_active_event(self):
+        existing_slug_constraint = psql(self.database, """
+            SELECT count(*) FROM pg_constraint
+            WHERE conname='events_slug_unique';
+        """).stdout.strip()
+        redundant_slug_index = psql(self.database, """
+            SELECT count(*) FROM pg_indexes
+            WHERE schemaname='public' AND indexname='events_slug_unique_idx';
+        """).stdout.strip()
+        self.assertEqual(existing_slug_constraint, "1")
+        self.assertEqual(redundant_slug_index, "0")
         result = psql(self.database,
                       "UPDATE public.events SET status='active' WHERE slug='a2';",
                       check=False)

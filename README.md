@@ -74,7 +74,9 @@ Dacă răspunsul RPC se pierde după commit, rezultatul este neclar: reîncarcă
 lista înainte de a încerca din nou.
 
 **Migrarea este obligatorie înainte de publicarea backendului nou.** Nu este
-aplicată automat. Mai întâi, în SQL Editor Supabase, verifică schema reală
+aplicată automat. Constrângerea existentă `events_slug_unique UNIQUE (slug)`
+rămâne neschimbată; migrarea nu creează un al doilea index pe `slug`.
+Mai întâi, în SQL Editor Supabase, verifică schema reală
 (`public.locations`: `id`, `slug`; `public.events`: `id`, `slug`, `location_id`,
 `status`) și datele existente, folosind interogări numai de citire:
 
