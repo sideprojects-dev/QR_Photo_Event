@@ -151,6 +151,9 @@ class QRAccessTests(unittest.TestCase):
                 event_table.insert.return_value.execute.return_value = (
                     SimpleNamespace(data=[{"id": 7}])
                 )
+                db.rpc.return_value.execute.return_value = (
+                    SimpleNamespace(data={"result": "activated"})
+                )
                 drive = Mock()
                 drive.files.return_value.create.return_value.execute.return_value = (
                     {"id": "event-folder"}
@@ -172,6 +175,12 @@ class QRAccessTests(unittest.TestCase):
                         response.json()["url"],
                         expected_base + event_path("new-event", 7),
                     )
+                    self.assertEqual(
+                        event_table.insert.call_args.args[0]["status"], "archived"
+                    )
+                    db.rpc.assert_called_once_with("activate_event_atomic", {
+                        "p_event_slug": "new-event", "p_location_slug": "venue"
+                    })
 
 
 if __name__ == "__main__":

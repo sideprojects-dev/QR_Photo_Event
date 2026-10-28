@@ -749,7 +749,7 @@
     async function activateEvent(slug) {
       try {
         const response = await fetch(
-          `/api/events/${encodeURIComponent(slug)}/activate`,
+          `/api/events/${encodeURIComponent(slug)}/activate?location_slug=${encodeURIComponent(selectedLocationSlug)}`,
           {
             method: 'POST',
             headers: {

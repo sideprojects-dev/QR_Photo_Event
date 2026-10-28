@@ -63,6 +63,65 @@ platformă `RENDER_EXTERNAL_URL` (HTTPS). Local, se folosește adresa cererii.
 Pornirea din `Dockerfile` dezactivează jurnalul automat al cererilor Uvicorn;
 erorile aplicației rămân vizibile.
 
+## Activarea atomică a evenimentelor
+
+Endpointul Admin de activare folosește funcția PostgreSQL din
+`20261029_ATOMIC_EVENT_ACTIVATION.sql`. Crearea unui eveniment îl salvează mai
+întâi cu statusul `archived`, apoi folosește aceeași funcție pentru activare.
+Dacă funcția PostgreSQL eșuează, evenimentul nou și folderul său rămân
+disponibile pentru verificare, iar evenimentul activ anterior nu este arhivat.
+Dacă răspunsul RPC se pierde după commit, rezultatul este neclar: reîncarcă
+lista înainte de a încerca din nou.
+
+**Migrarea este obligatorie înainte de publicarea backendului nou.** Nu este
+aplicată automat. Mai întâi, în SQL Editor Supabase, verifică schema reală
+(`public.locations`: `id`, `slug`; `public.events`: `id`, `slug`, `location_id`,
+`status`) și datele existente, folosind interogări numai de citire:
+
+```sql
+select table_name, column_name, data_type, udt_name
+from information_schema.columns
+where table_schema = 'public' and table_name in ('locations', 'events')
+order by table_name, ordinal_position;
+
+select indexname, indexdef from pg_indexes
+where schemaname = 'public' and tablename = 'events';
+
+select location_id, count(*) from public.events
+where status = 'active' and location_id is not null
+group by location_id having count(*) > 1;
+
+select slug, count(*) from public.events
+group by slug having count(*) > 1;
+
+select e.id, e.slug from public.events e
+left join public.locations l on l.id = e.location_id
+where e.location_id is not null and l.id is null;
+```
+
+Dacă schema diferă sau oricare dintre interogările pentru duplicate ori
+locații lipsă întoarce rânduri, oprește migrarea și revizuiește datele; scriptul
+nu le corectează. Dacă există deja indexuri echivalente, revizuiește scriptul
+înainte de aplicare pentru a evita indexuri redundante.
+
+Într-o fereastră fără operații Admin de creare sau activare, aplică întregul
+fișier SQL ca o singură tranzacție. Verifică apoi că funcția există și că
+rolurile publice nu o pot executa:
+
+```sql
+select
+  has_function_privilege('anon', 'public.activate_event_atomic(text,text)', 'EXECUTE') as anon_can_execute,
+  has_function_privilege('authenticated', 'public.activate_event_atomic(text,text)', 'EXECUTE') as user_can_execute,
+  has_function_privilege('service_role', 'public.activate_event_atomic(text,text)', 'EXECUTE') as service_can_execute;
+```
+
+Primele două valori trebuie să fie `false`, iar ultima `true`. Abia apoi
+publică backendul. Nu activa evenimente prin vechea versiune a aplicației în
+intervalul dintre migrare și deployment: vechea creare încă folosește două
+apeluri Supabase separate. Indexul unic împiedică două evenimente active în
+aceeași locație, iar funcția blochează doar rândul locației vizate, astfel că
+activările din locații diferite pot continua independent.
+
 ## Reautorizarea Google Drive
 
 Dacă fotografiile din galerie dau eroare și conexiunea Google raportează

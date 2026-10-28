@@ -175,17 +175,8 @@ async def api_create_event(event_name: str, location_slug: str, request: Request
 
         folder_id = folder["id"]
 
-        # Archive only the active event from this location
-        (
-            supabase
-            .table("events")
-            .update({"status": "archived"})
-            .eq("location_id", location_id)
-            .eq("status", "active")
-            .execute()
-        )
-
-        # Save the new event
+        # Keep the current Master QR destination until the new event exists.
+        # Its activation below is one database transaction.
         result = (
             supabase
             .table("events")
@@ -194,7 +185,7 @@ async def api_create_event(event_name: str, location_slug: str, request: Request
                 "name": event_name,
                 "folder_id": folder_id,
                 "created_at": datetime.now().isoformat(),
-                "status": "active",
+                "status": "archived",
                 "location_id": location_id
             })
             .execute()
@@ -210,6 +201,22 @@ async def api_create_event(event_name: str, location_slug: str, request: Request
 
         raise
 
+    if not result.data or not result.data[0].get("id"):
+        raise HTTPException(
+            status_code=503,
+            detail="Rezultatul creării este neclar. Verifică evenimentul înainte de a reîncerca.",
+        )
+
+    try:
+        activate_event_in_db(supabase, slug, location_slug)
+    except HTTPException as exc:
+        # The new row and Drive folder may already exist. Keep both, so that
+        # an administrator can inspect and activate it without duplicating data.
+        raise HTTPException(
+            status_code=503,
+            detail="Evenimentul a fost creat, dar activarea nu a putut fi confirmată. Reîncarcă lista.",
+        ) from exc
+
     response.headers["Cache-Control"] = "private, no-store"
     return {
         "success": True,
@@ -221,54 +228,38 @@ async def api_create_event(event_name: str, location_slug: str, request: Request
 
 
 @router.post("/api/events/{slug}/activate", dependencies=[Depends(require_admin)])
-def activate_event(slug: str):
+def activate_event(slug: str, location_slug: str | None = None):
     supabase = get_supabase()
+    activate_event_in_db(supabase, slug, location_slug)
+    return {"success": True, "slug": slug}
 
-    event_result = (
-        supabase
-        .table("events")
-        .select("id, slug, location_id")
-        .eq("slug", slug)
-        .limit(1)
-        .execute()
-    )
 
-    if not event_result.data:
+def activate_event_in_db(supabase, slug: str, location_slug: str | None):
+    try:
+        result = supabase.rpc(
+            "activate_event_atomic",
+            {"p_event_slug": slug, "p_location_slug": location_slug},
+        ).execute()
+    except Exception as exc:
+        if getattr(exc, "code", None) == "23505":
+            raise HTTPException(
+                status_code=409,
+                detail="Alt eveniment a fost activat simultan. Reîncarcă lista.",
+            ) from exc
         raise HTTPException(
-            status_code=404,
-            detail="Eveniment negăsit."
-        )
+            status_code=503,
+            detail="Rezultatul activării nu a putut fi confirmat. Reîncarcă lista evenimentelor.",
+        ) from exc
 
-    event = event_result.data[0]
-    location_id = event["location_id"]
+    outcome = result.data.get("result") if isinstance(result.data, dict) else None
+    if outcome in ("event_not_found", "location_not_found", "location_mismatch"):
+        raise HTTPException(status_code=404, detail="Evenimentul nu a fost găsit în locația indicată.")
+    if outcome == "event_unbound":
+        raise HTTPException(status_code=400, detail="Evenimentul nu este asociat unei locații.")
+    if outcome not in ("activated", "already_active"):
+        raise HTTPException(status_code=503, detail="Rezultatul activării nu a putut fi verificat.")
 
-    if not location_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Evenimentul nu este asociat unei locații."
-        )
-
-    (
-        supabase
-        .table("events")
-        .update({"status": "archived"})
-        .eq("location_id", location_id)
-        .eq("status", "active")
-        .execute()
-    )
-
-    (
-        supabase
-        .table("events")
-        .update({"status": "active"})
-        .eq("id", event["id"])
-        .execute()
-    )
-
-    return {
-        "success": True,
-        "slug": slug
-    }
+    return outcome
 
 
 @router.get("/api/events", dependencies=[Depends(require_admin)])
