@@ -91,7 +91,41 @@ def save_media_record(
         .execute()
     )
 
-    return result.data[0] if result.data else None
+    record = result.data[0] if result.data else None
+    return record if valid_saved_media(record, event_id, drive_file_id) else None
+
+
+def valid_saved_media(record, event_id, drive_file_id: str) -> bool:
+    return (
+        isinstance(record, dict)
+        and bool(record.get("id"))
+        and str(record.get("event_id")) == str(event_id)
+        and record.get("drive_file_id") == drive_file_id
+    )
+
+
+def find_saved_media(supabase, event_id, drive_file_id: str):
+    result = (
+        supabase.table("media")
+        .select("id, event_id, drive_file_id, content_type, created_at")
+        .eq("drive_file_id", drive_file_id).limit(2).execute()
+    )
+    records = result.data or []
+    if not records:
+        return None
+    if len(records) != 1 or not valid_saved_media(records[0], event_id, drive_file_id):
+        raise RuntimeError("Media insert result could not be verified")
+    return records[0]
+
+
+def cleanup_created_drive_files(drive, file_ids) -> bool:
+    cleaned = True
+    for file_id in dict.fromkeys(file_id for file_id in file_ids if file_id):
+        try:
+            drive.files().delete(fileId=file_id).execute()
+        except Exception:
+            cleaned = False
+    return cleaned
 
 
 def get_event_media(
@@ -671,6 +705,8 @@ def upload(
             file_name=unique_name,
             folder_id=event["folder_id"]
         )
+        if not drive_file_id:
+            raise RuntimeError("Drive did not return a file ID")
 
         if thumbnail_bytes:
             try:
@@ -730,40 +766,51 @@ def upload(
                     flush=True
                 )
 
+    except Exception as exc:
+        cleaned = cleanup_created_drive_files(
+            drive, (preview_drive_file_id, thumbnail_drive_file_id, drive_file_id)
+        )
+        detail = (
+            "Încărcarea a eșuat; curățarea fișierelor din Drive necesită verificare manuală."
+            if not cleaned else "Încărcarea fișierului a eșuat."
+        )
+        raise HTTPException(status_code=503, detail=detail) from exc
+
+    try:
         media_record = save_media_record(
             supabase=supabase,
             event_id=event["id"],
             drive_file_id=drive_file_id,
-            thumbnail_drive_file_id=(
-                thumbnail_drive_file_id
-            ),
-            preview_drive_file_id=(
-                preview_drive_file_id
-            ),
+            thumbnail_drive_file_id=thumbnail_drive_file_id,
+            preview_drive_file_id=preview_drive_file_id,
             file_name=unique_name,
             content_type=file.content_type,
-            size_bytes=file_size
+            size_bytes=file_size,
         )
-
     except Exception:
-        for created_file_id in (
-            preview_drive_file_id,
-            thumbnail_drive_file_id,
-            drive_file_id
-        ):
-            if not created_file_id:
-                continue
+        media_record = None
 
-            try:
-                drive.files().delete(
-                    fileId=created_file_id
-                ).execute()
-            except Exception:
-                pass
-
-        raise
+    if media_record is None:
+        try:
+            media_record = find_saved_media(supabase, event["id"], drive_file_id)
+        except Exception as exc:
+            # The insert may have committed despite a failed response. Never
+            # delete a Drive file while its database state is unknown.
+            raise HTTPException(
+                status_code=503,
+                detail="Rezultatul salvării este neclar. Verifică manual Drive și baza de date."
+            ) from exc
+        if media_record is None:
+            cleaned = cleanup_created_drive_files(
+                drive, (preview_drive_file_id, thumbnail_drive_file_id, drive_file_id)
+            )
+            detail = (
+                "Salvarea a eșuat; curățarea din Drive necesită verificare manuală."
+                if not cleaned else "Salvarea materialului a eșuat."
+            )
+            raise HTTPException(status_code=503, detail=detail)
 
     return {
         "success": True,
-        "media": public_media_record(media_record) if media_record else None
+        "media": public_media_record(media_record)
     }

@@ -46,6 +46,13 @@ codul QR, astfel încât invitații de pe aceeași rețea nu împart o cotă per
 Cu mai multe procese sau instanțe, fiecare aplică propriile limite; pentru o
 cotă comună ar fi necesar un coordonator extern.
 
+Pentru verificarea manuală a consistenței unui singur eveniment, rulează
+`python storage_consistency.py SLUG_EVENIMENT`. Scriptul citește înregistrările
+Supabase și conținutul folderului Drive asociat, apoi raportează referințele
+absente din foldere și fișierele fără referință. Nu modifică și nu șterge date.
+Un fișier mutat în afara folderului sau adăugat manual poate apărea în raport;
+verifică rezultatele înainte de orice intervenție.
+
 Codurile QR se descarcă din panoul Admin al serverului pe care va fi folosită
 aplicația. Codul permanent al locației duce la evenimentul ei activ. Linkul
 conține un cod de acces și poate fi distribuit mai departe de oricine îl are.
