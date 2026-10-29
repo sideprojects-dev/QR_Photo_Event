@@ -1,10 +1,13 @@
 import os
+import threading
 from secrets import compare_digest
 
 from fastapi import HTTPException, Header
 from supabase import create_client
 
 from config import ADMIN_PASSWORD
+
+_thread_local = threading.local()
 
 
 def get_supabase():
@@ -13,10 +16,14 @@ def get_supabase():
     if not service_key:
         raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is missing from environment")
 
-    return create_client(
-        os.getenv("SUPABASE_URL"),
-        service_key
-    )
+    url = os.getenv("SUPABASE_URL")
+    config = (url, service_key)
+    client = getattr(_thread_local, "supabase_client", None)
+    if client is None or getattr(_thread_local, "supabase_config", None) != config:
+        client = create_client(url, service_key)
+        _thread_local.supabase_client = client
+        _thread_local.supabase_config = config
+    return client
 
 
 def count_rows(supabase, table: str, filters=(), media_kind: str | None = None) -> int:
