@@ -1,8 +1,13 @@
 import { state } from './state.js?v=6'
 import { withEventAccess } from './guest_access.js?v=1'
+import { perfStart, perfRecord } from './perf_monitor.js?v=1'
 
 let loadedItems = []
 let currentModalItem = null
+let firstThumbnailStarted = null
+let firstThumbnailMeasured = false
+let firstThumbnailFramePending = false
+let galleryLoadId = 0
 
 export async function loadGallery(
     reset = false
@@ -47,6 +52,11 @@ export async function loadGallery(
     }
 
     if (reset) {
+        galleryLoadId += 1
+        firstThumbnailStarted = perfStart()
+        firstThumbnailMeasured = false
+        firstThumbnailFramePending = false
+        perfRecord('gallery_start', firstThumbnailStarted)
         state.galleryOffset = 0
         state.galleryHasMore = false
         grid.innerHTML = ''
@@ -58,6 +68,8 @@ export async function loadGallery(
     message.textContent =
         'Se încarcă galeria...'
 
+    const listStarted = perfStart()
+    let listMeasured = false
     try {
         const response =
             await fetch(
@@ -74,6 +86,8 @@ export async function loadGallery(
 
         const data =
             await response.json()
+        perfRecord('gallery_list_request', listStarted, response.ok ? 'ok' : 'http_error')
+        listMeasured = true
 
         if (!response.ok) {
             throw new Error(
@@ -88,7 +102,7 @@ export async function loadGallery(
                 ? data.items
                 : []
 
-        renderGalleryItems(items)
+        renderGalleryItems(items, galleryLoadId)
 
         state.galleryHasMore =
             Boolean(
@@ -115,6 +129,7 @@ export async function loadGallery(
         message.textContent = ''
 
     } catch (err) {
+        if (!listMeasured) perfRecord('gallery_list_request', listStarted, 'error')
         message.textContent =
             'Nu am putut încărca galeria: ' +
             err.message
@@ -128,7 +143,7 @@ export async function loadGallery(
     }
 }
 
-function renderGalleryItems(items) {
+function renderGalleryItems(items, loadId) {
     const grid =
         document.getElementById(
             'galleryGrid'
@@ -142,13 +157,13 @@ function renderGalleryItems(items) {
     items.forEach(
         item => {
             grid.appendChild(
-                createGalleryItem(item)
+                createGalleryItem(item, loadId)
             )
         }
     )
 }
 
-function createGalleryItem(item) {
+function createGalleryItem(item, loadId) {
     const container =
         document.createElement('div')
 
@@ -204,6 +219,24 @@ function createGalleryItem(item) {
     } else {
         const image =
             document.createElement('img')
+
+        const thumbnailStarted = firstThumbnailStarted
+        const recordFirstThumbnail = () => {
+            if (loadId !== galleryLoadId || firstThumbnailMeasured) return
+            firstThumbnailMeasured = true
+            perfRecord('gallery_first_thumbnail', thumbnailStarted)
+        }
+
+        image.onload = () => {
+            if (thumbnailStarted === null) return
+            if (loadId !== galleryLoadId || firstThumbnailMeasured || firstThumbnailFramePending) return
+            firstThumbnailFramePending = true
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(recordFirstThumbnail)
+            } else {
+                recordFirstThumbnail()
+            }
+        }
 
         image.src =
             withEventAccess(`/media/${
@@ -262,6 +295,7 @@ function createGalleryItem(item) {
 }
 
 export function openGalleryModal(item) {
+    const modalStarted = perfStart()
     currentModalItem = item
     const modal =
         document.getElementById(
@@ -355,6 +389,7 @@ export function openGalleryModal(item) {
         image.removeAttribute('src')
 
         image.onload = () => {
+            perfRecord('photo_modal_ready', modalStarted)
             if (loading) {
                 loading.style.display =
                     'none'
@@ -365,6 +400,7 @@ export function openGalleryModal(item) {
         }
 
         image.onerror = () => {
+            perfRecord('photo_modal_ready', modalStarted, 'error')
             if (loading) {
                 loading.textContent =
                     'Nu am putut încărca fotografia.'

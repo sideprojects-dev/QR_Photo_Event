@@ -5,6 +5,8 @@ from threading import Lock
 
 from starlette.responses import JSONResponse, PlainTextResponse
 
+from perf_monitor import PerfTrace
+
 
 MAX_IMAGE_BYTES = 25 * 1024 * 1024
 MAX_VIDEO_BYTES = 250 * 1024 * 1024
@@ -75,9 +77,15 @@ class UploadAdmissionMiddleware:
             await response(scope, receive, send)
             return
 
+        trace = PerfTrace("upload_request")
+        if trace.enabled:
+            scope.setdefault("state", {})["perf_trace_id"] = trace.trace_id
+        outcome = "error"
         try:
             await self.app(scope, receive, send)
+            outcome = "completed"
         finally:
+            trace.emit(outcome)
             with self.lock:
                 self.active -= 1
 

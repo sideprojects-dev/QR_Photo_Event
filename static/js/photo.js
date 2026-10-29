@@ -1,5 +1,5 @@
 import { state } from './state.js?v=6'
-import { stopCamera } from './camera.js?v=15'
+import { stopCamera } from './camera.js?v=16'
 import { replacePreviewObjectUrl } from './preview_urls.js?v=2'
 
 export async function takePhoto() {
