@@ -67,6 +67,9 @@ fișierului și `response_prepare` construcția răspunsului. Pentru materiale v
 fără miniatură dedicată, serverul folosește `size_bytes` al originalului când
 este disponibil; în acest caz nu apare `drive_metadata`. Lipsa unei etape nu
 înseamnă că fișierul nu a fost citit: `media_stream` măsoară transferul separat.
+Clientul Supabase este reutilizat în același thread de lucru FastAPI, inclusiv
+conexiunile HTTP ale clientului PostgREST; fiecare thread își păstrează propriul
+client. Prima cerere pe un thread nou îl creează în continuare.
 
 În browser, adaugă `perf=1` la adresa evenimentului (`&perf=1` dacă adresa
 conține deja `access`). În DevTools → Console, filtrează `qr_photo_perf`.
