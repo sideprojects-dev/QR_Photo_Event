@@ -60,6 +60,14 @@ etape FastAPI, deci nu reprezintă exclusiv timpul de parsare. `thumbnail_prepar
 și `preview_prepare` se termină când răspunsul de streaming este construit;
 `media_stream` măsoară separat consumarea fluxului și apelurile Drive.
 
+Pentru miniaturi, `supabase_client` măsoară crearea clientului Supabase,
+`media_lookup` interogarea înregistrării, `access_check` verificarea accesului,
+`drive_client` pregătirea clientului Drive, `drive_metadata` obținerea dimensiunii
+fișierului și `response_prepare` construcția răspunsului. Pentru materiale vechi
+fără miniatură dedicată, serverul folosește `size_bytes` al originalului când
+este disponibil; în acest caz nu apare `drive_metadata`. Lipsa unei etape nu
+înseamnă că fișierul nu a fost citit: `media_stream` măsoară transferul separat.
+
 În browser, adaugă `perf=1` la adresa evenimentului (`&perf=1` dacă adresa
 conține deja `access`). În DevTools → Console, filtrează `qr_photo_perf`.
 În Network → Timing poți compara trimiterea cererii, așteptarea răspunsului și
