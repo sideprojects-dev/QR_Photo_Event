@@ -3,32 +3,32 @@ import {
     startCamera,
     stopCamera,
     flipCamera
-} from './camera.js?v=15'
+} from './camera.js?v=16'
 
-import { takePhoto } from './photo.js?v=14'
+import { takePhoto } from './photo.js?v=15'
 
 import {
     toggleVideo,
     stopRecordingForBackground
-} from './video.js?v=14'
+} from './video.js?v=15'
 
 import {
     sendFile,
     retakeCapture
-} from './upload.js?v=14'
+} from './upload.js?v=15'
 
 import {
     openGalleryPicker,
     handleGalleryFileChange,
     bindSelectedPhotoPreviewEvents
-} from './gallery_upload.js?v=2'
+} from './gallery_upload.js?v=3'
 
 import {
     loadGallery,
     loadMoreGallery,
     closeGalleryModal,
     bindGalleryModalEvents
-} from './gallery.js?v=8'
+} from './gallery.js?v=9'
 
 function bindControls() {
     document.getElementById(

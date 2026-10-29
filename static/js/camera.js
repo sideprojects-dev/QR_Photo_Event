@@ -1,5 +1,6 @@
 import { state } from './state.js?v=6'
 import { isIOSCamera, startCanvasPreview } from './camera_canvas.js?v=1'
+import { perfStart, perfRecord } from './perf_monitor.js?v=1'
 
 let cameraGeneration = 0
 let pendingStream = null
@@ -254,11 +255,13 @@ export function stopCamera() {
 }
 
 export async function startCamera({ withAudio = false } = {}) {
+    const started = perfStart()
     stopCamera()
     const generation = cameraGeneration
 
     // Nu repornim camera în background.
     if (document.hidden) {
+        perfRecord('camera_ready', started, 'background')
         return
     }
 
@@ -287,6 +290,7 @@ export async function startCamera({ withAudio = false } = {}) {
             state.capturedFile || state.selectedPhotos.length || document.hidden
         ) {
             stream.getTracks().forEach(track => track.stop())
+            perfRecord('camera_ready', started, 'superseded')
             return
         }
 
@@ -318,7 +322,10 @@ export async function startCamera({ withAudio = false } = {}) {
             })
             .then(() => frameWait.promise)
         const hasFrame = await Promise.race([frameWait.promise, playback])
-        if (generation !== cameraGeneration) return
+        if (generation !== cameraGeneration) {
+            perfRecord('camera_ready', started, 'superseded')
+            return
+        }
         pendingFrame = null
         if (!hasFrame) throw new Error('Camera nu a trimis un cadru video.')
         const canvas = document.getElementById('cameraCanvas')
@@ -334,6 +341,7 @@ export async function startCamera({ withAudio = false } = {}) {
         if (settings.deviceId) state.selectedCameraId = settings.deviceId
         if (settings.facingMode) state.facingMode = settings.facingMode
         document.body.classList.add(useCanvas ? 'camera-canvas-ready' : 'camera-ready')
+        perfRecord('camera_ready', started)
 
         try {
             const cameras = await getAvailableCameras()
@@ -348,7 +356,11 @@ export async function startCamera({ withAudio = false } = {}) {
             }
         }
     } catch (err) {
-        if (generation !== cameraGeneration) return
+        if (generation !== cameraGeneration) {
+            perfRecord('camera_ready', started, 'superseded')
+            return
+        }
+        perfRecord('camera_ready', started, 'error')
         stopCamera()
         document.getElementById('message').textContent =
             'Nu am putut accesa camera: ' + err.message

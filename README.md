@@ -46,6 +46,32 @@ codul QR, astfel încât invitații de pe aceeași rețea nu împart o cotă per
 Cu mai multe procese sau instanțe, fiecare aplică propriile limite; pentru o
 cotă comună ar fi necesar un coordonator extern.
 
+## Măsurători de performanță (H7.1)
+
+Măsurătorile detaliate sunt dezactivate implicit. Pentru server, setează
+`QR_PERF_MONITORING=1` în mediul de rulare și repornește serviciul; elimină
+variabila sau seteaz-o la `0` pentru dezactivare. În PowerShell, pentru o
+sesiune locală: `$env:QR_PERF_MONITORING = '1'`. Logurile `performance` sunt
+JSON, cu durate în milisecunde și un `trace_id` aleatoriu. Nu includ nume de
+fișiere, adrese, coduri de acces sau identificatori de eveniment. `upload_request`
+măsoară cererea admisă de middleware; `photo_upload` măsoară doar endpointul.
+Diferența lor include transferul către server, parsarea multipartului și alte
+etape FastAPI, deci nu reprezintă exclusiv timpul de parsare. `thumbnail_prepare`
+și `preview_prepare` se termină când răspunsul de streaming este construit;
+`media_stream` măsoară separat consumarea fluxului și apelurile Drive.
+
+În browser, adaugă `perf=1` la adresa evenimentului (`&perf=1` dacă adresa
+conține deja `access`). În DevTools → Console, filtrează `qr_photo_perf`.
+În Network → Timing poți compara trimiterea cererii, așteptarea răspunsului și
+transferul imaginii. `gallery_first_thumbnail` este înregistrat după încărcarea
+imaginii și la următorul cadru de animație, ca aproximare a afișării. Evenimentele
+`upload_transfer` și `upload_after_transfer`
+separă terminarea trimiterii XHR de răspunsul serverului; al doilea interval
+include și rețeaua, nu doar procesarea backend. Elimină `perf=1` pentru a opri
+măsurătorile din browser. Compară scenarii identice, cu server activ și după
+inactivitate, pe Wi-Fi și pe date mobile. Nu copia adresa evenimentului sau
+loguri generale care ar putea conține codul de acces.
+
 Pentru verificarea manuală a consistenței unui singur eveniment, rulează
 `python storage_consistency.py SLUG_EVENIMENT`. Scriptul citește înregistrările
 Supabase și conținutul folderului Drive asociat, apoi raportează referințele

@@ -1,14 +1,15 @@
 import { state } from './state.js?v=6'
-import { startCamera } from './camera.js?v=15'
-import { loadGallery } from './gallery.js?v=8'
+import { startCamera } from './camera.js?v=16'
+import { loadGallery } from './gallery.js?v=9'
 import { clearPreviewObjectUrl } from './preview_urls.js?v=2'
 import { withEventAccess } from './guest_access.js?v=1'
+import { perfStart, perfRecord } from './perf_monitor.js?v=1'
 import {
     clearSelectedPhotos,
     markSelectedPhotoUploaded,
     renderSelectedPhotos,
     updateSelectedPhotoStatus
-} from './gallery_upload.js?v=2'
+} from './gallery_upload.js?v=3'
 
 export async function sendFile() {
     const pendingPhotos = state.selectedPhotos.some(
@@ -233,6 +234,8 @@ function uploadWithProgress(
         (resolve, reject) => {
             const xhr =
                 new XMLHttpRequest()
+            const started = perfStart()
+            let transferFinished = null
 
             xhr.open(
                 'POST',
@@ -263,7 +266,16 @@ function uploadWithProgress(
                     onProgress(percent)
                 }
 
+            xhr.upload.onload = () => {
+                transferFinished = perfStart()
+                perfRecord('upload_transfer', started)
+            }
+
             xhr.onload = () => {
+                perfRecord('upload_after_transfer', transferFinished,
+                    xhr.status >= 200 && xhr.status < 300 ? 'ok' : 'http_error')
+                perfRecord('upload_total', started,
+                    xhr.status >= 200 && xhr.status < 300 ? 'ok' : 'http_error')
                 let data = {}
 
                 try {
@@ -287,6 +299,7 @@ function uploadWithProgress(
             }
 
             xhr.onerror = () => {
+                perfRecord('upload_total', started, 'network_error')
                 reject(
                     new Error(
                         'Conexiunea s-a întrerupt în timpul upload-ului.'
@@ -295,6 +308,7 @@ function uploadWithProgress(
             }
 
             xhr.onabort = () => {
+                perfRecord('upload_total', started, 'aborted')
                 reject(
                     new Error(
                         'Upload-ul a fost anulat.'

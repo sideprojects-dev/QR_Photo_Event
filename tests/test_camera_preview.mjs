@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { state } from '../static/js/state.js?v=6'
-import { coverVideoSize, flipCamera, selectCamera, startCamera, stopCamera } from '../static/js/camera.js?v=15'
+import { coverVideoSize, flipCamera, selectCamera, startCamera, stopCamera } from '../static/js/camera.js?v=16'
 import { retakeCapture } from '../static/js/upload.js'
 import { takePhoto } from '../static/js/photo.js'
 

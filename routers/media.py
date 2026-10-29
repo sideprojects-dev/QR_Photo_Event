@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse, Response
 from PIL import Image, ImageOps
 
 from deps import get_supabase
+from perf_monitor import PerfTrace
 from guest_access import has_event_access
 from google_drive import (
     get_drive_service,
@@ -169,6 +170,17 @@ def get_event_media_endpoint(
     offset: int = 0,
     access: str | None = None
 ):
+    trace = PerfTrace("gallery_list")
+    outcome = "error"
+    try:
+        result = _get_event_media_response(slug, response, limit, offset, access, trace)
+        outcome = "ok"
+        return result
+    finally:
+        trace.emit(outcome)
+
+
+def _get_event_media_response(slug, response, limit, offset, access, trace):
     if limit < 1 or limit > 100:
         raise HTTPException(
             status_code=400,
@@ -182,16 +194,19 @@ def get_event_media_endpoint(
         )
 
     supabase = get_supabase()
-    event = get_event_by_slug(supabase, slug)
-    if not has_event_access(event["id"], access):
-        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
+    with trace.step("event_lookup"):
+        event = get_event_by_slug(supabase, slug)
+    with trace.step("access_check"):
+        if not has_event_access(event["id"], access):
+            raise HTTPException(status_code=404, detail="Eveniment negăsit.")
 
-    items, has_more = get_event_media(
-        supabase=supabase,
-        event_id=event["id"],
-        limit=limit,
-        offset=offset
-    )
+    with trace.step("media_list"):
+        items, has_more = get_event_media(
+            supabase=supabase,
+            event_id=event["id"],
+            limit=limit,
+            offset=offset
+        )
 
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -230,9 +245,16 @@ def get_media_by_id(supabase, media_id: str):
     return result.data[0]
 
 
-def get_accessible_media(supabase, media_id: str, access: str | None):
-    record = get_media_by_id(supabase, media_id)
-    if not has_event_access(record["event_id"], access):
+def get_accessible_media(supabase, media_id: str, access: str | None, trace=None):
+    if trace is None:
+        record = get_media_by_id(supabase, media_id)
+        allowed = has_event_access(record["event_id"], access)
+    else:
+        with trace.step("media_lookup"):
+            record = get_media_by_id(supabase, media_id)
+        with trace.step("access_check"):
+            allowed = has_event_access(record["event_id"], access)
+    if not allowed:
         raise HTTPException(status_code=404, detail="Media not found.")
     return record
 
@@ -312,18 +334,31 @@ def validate_video_header(header: bytes, content_type: str) -> None:
         )
 
 
-def iter_drive_range(drive_file_id: str, start: int, end: int):
+def iter_drive_range(
+    drive_file_id: str, start: int, end: int,
+    trace_id: str | None = None
+):
     """Request only bounded ranges; no Drive response is kept between yields."""
-    for offset in range(start, end + 1, STREAM_CHUNK_BYTES):
-        chunk_end = min(offset + STREAM_CHUNK_BYTES - 1, end)
-        # StreamingResponse may advance the iterator on another worker thread.
-        # Drive clients are thread-local, so acquire one on that thread.
-        chunk = download_file_range(
-            get_drive_service(), drive_file_id, offset, chunk_end
-        )
-        if len(chunk) != chunk_end - offset + 1:
-            raise RuntimeError("Google Drive returned an incomplete media range")
-        yield chunk
+    trace = PerfTrace("media_stream", trace_id=trace_id)
+    outcome = "interrupted"
+    try:
+        for offset in range(start, end + 1, STREAM_CHUNK_BYTES):
+            chunk_end = min(offset + STREAM_CHUNK_BYTES - 1, end)
+            # StreamingResponse may advance the iterator on another worker thread.
+            # Drive clients are thread-local, so acquire one on that thread.
+            with trace.step("drive_fetch"):
+                chunk = download_file_range(
+                    get_drive_service(), drive_file_id, offset, chunk_end
+                )
+            if len(chunk) != chunk_end - offset + 1:
+                raise RuntimeError("Google Drive returned an incomplete media range")
+            yield chunk
+        outcome = "ok"
+    except Exception:
+        outcome = "error"
+        raise
+    finally:
+        trace.emit(outcome)
 
 
 def stream_drive_file(
@@ -333,9 +368,14 @@ def stream_drive_file(
     content_disposition: str | None = None,
     range_header: str | None = None,
     file_size: int | None = None,
+    trace: PerfTrace | None = None,
 ):
     if file_size is None:
-        file_size = get_drive_file_size(drive, drive_file_id)
+        if trace is None:
+            file_size = get_drive_file_size(drive, drive_file_id)
+        else:
+            with trace.step("drive_metadata"):
+                file_size = get_drive_file_size(drive, drive_file_id)
     file_size = int(file_size)
     start, end = (parse_byte_range(range_header, file_size)
                   if range_header else (0, file_size - 1))
@@ -350,7 +390,9 @@ def stream_drive_file(
     if range_header:
         headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     return StreamingResponse(
-        iter_drive_range(drive_file_id, start, end) if file_size else iter(()),
+        iter_drive_range(
+            drive_file_id, start, end, trace_id=trace.trace_id if trace else None
+        ) if file_size else iter(()),
         status_code=206 if range_header else 200,
         media_type=media_type,
         headers=headers,
@@ -359,11 +401,23 @@ def stream_drive_file(
 
 @router.get("/media/{media_id}/thumbnail")
 def stream_media_thumbnail(media_id: str, access: str | None = None):
+    trace = PerfTrace("thumbnail_prepare")
+    outcome = "error"
+    try:
+        result = _stream_media_thumbnail(media_id, access, trace)
+        outcome = "ok"
+        return result
+    finally:
+        trace.emit(outcome)
+
+
+def _stream_media_thumbnail(media_id, access, trace):
     supabase = get_supabase()
     media_record = get_accessible_media(
         supabase=supabase,
         media_id=media_id,
-        access=access
+        access=access,
+        trace=trace
     )
 
     if not media_record["content_type"].startswith("image/"):
@@ -382,23 +436,37 @@ def stream_media_thumbnail(media_id: str, access: str | None = None):
         return stream_drive_file(
             drive=drive,
             drive_file_id=thumbnail_drive_file_id,
-            media_type="image/jpeg"
+            media_type="image/jpeg",
+            trace=trace
         )
 
     return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
-        media_type=media_record["content_type"]
+        media_type=media_record["content_type"],
+        trace=trace
     )
 
 
 @router.get("/media/{media_id}/preview")
 def stream_media_preview(media_id: str, access: str | None = None):
+    trace = PerfTrace("preview_prepare")
+    outcome = "error"
+    try:
+        result = _stream_media_preview(media_id, access, trace)
+        outcome = "ok"
+        return result
+    finally:
+        trace.emit(outcome)
+
+
+def _stream_media_preview(media_id, access, trace):
     supabase = get_supabase()
     media_record = get_accessible_media(
         supabase=supabase,
         media_id=media_id,
-        access=access
+        access=access,
+        trace=trace
     )
 
     if not media_record["content_type"].startswith("image/"):
@@ -417,13 +485,15 @@ def stream_media_preview(media_id: str, access: str | None = None):
         return stream_drive_file(
             drive=drive,
             drive_file_id=preview_drive_file_id,
-            media_type="image/jpeg"
+            media_type="image/jpeg",
+            trace=trace
         )
 
     return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
-        media_type=media_record["content_type"]
+        media_type=media_record["content_type"],
+        trace=trace
     )
 
 
@@ -581,9 +651,24 @@ def stream_media(
 @router.post("/upload/{slug}")
 def upload(
     slug: str,
+    request: Request,
     file: UploadFile = File(...),
     access: str | None = None
 ):
+    trace = PerfTrace(
+        "photo_upload" if file.content_type and file.content_type.startswith("image/") else "video_upload",
+        trace_id=request.scope.get("state", {}).get("perf_trace_id")
+    )
+    outcome = "error"
+    try:
+        result = _process_upload(slug, file, access, trace)
+        outcome = "ok"
+        return result
+    finally:
+        trace.emit(outcome)
+
+
+def _process_upload(slug, file, access, trace):
     if (
         not file.content_type
         or not file.content_type.startswith(
@@ -614,12 +699,11 @@ def upload(
         )
 
     supabase = get_supabase()
-    event = get_event_by_slug(
-        supabase,
-        slug
-    )
-    if not has_event_access(event["id"], access):
-        raise HTTPException(status_code=404, detail="Eveniment negăsit.")
+    with trace.step("event_lookup"):
+        event = get_event_by_slug(supabase, slug)
+    with trace.step("access_check"):
+        if not has_event_access(event["id"], access):
+            raise HTTPException(status_code=404, detail="Eveniment negăsit.")
 
     extension = EXTENSION_BY_MIME[file.content_type]
 
@@ -646,7 +730,8 @@ def upload(
     if file.content_type.startswith("image/"):
         try:
             file.file.seek(0)
-            image_bytes = file.file.read(MAX_IMAGE_BYTES + 1)
+            with trace.step("image_read"):
+                image_bytes = file.file.read(MAX_IMAGE_BYTES + 1)
 
             if len(image_bytes) > MAX_IMAGE_BYTES:
                 raise HTTPException(
@@ -654,15 +739,14 @@ def upload(
                     detail="Image exceeds the 25 MB limit."
                 )
 
-            validate_image_content(image_bytes, file.content_type)
+            with trace.step("image_decode_validate"):
+                validate_image_content(image_bytes, file.content_type)
 
-            thumbnail_bytes = create_image_thumbnail(
-                image_bytes
-            )
+            with trace.step("thumbnail_generate"):
+                thumbnail_bytes = create_image_thumbnail(image_bytes)
 
-            preview_bytes = create_image_preview(
-                image_bytes
-            )
+            with trace.step("preview_generate"):
+                preview_bytes = create_image_preview(image_bytes)
         except HTTPException:
             raise
         except Exception as exc:
@@ -699,27 +783,27 @@ def upload(
     preview_drive_file_id = None
 
     try:
-        drive_file_id = upload_file_to_drive(
-            drive=drive,
-            file=file,
-            file_name=unique_name,
-            folder_id=event["folder_id"]
-        )
+        with trace.step("drive_original_upload"):
+            drive_file_id = upload_file_to_drive(
+                drive=drive,
+                file=file,
+                file_name=unique_name,
+                folder_id=event["folder_id"]
+            )
         if not drive_file_id:
             raise RuntimeError("Drive did not return a file ID")
 
         if thumbnail_bytes:
             try:
-                thumbnail_folder_id = (
-                    get_or_create_child_folder(
+                with trace.step("drive_thumbnail_folder"):
+                    thumbnail_folder_id = get_or_create_child_folder(
                         drive=drive,
                         parent_folder_id=event["folder_id"],
                         folder_name=THUMBNAIL_FOLDER_NAME
                     )
-                )
 
-                thumbnail_drive_file_id = (
-                    upload_bytes_to_drive(
+                with trace.step("drive_thumbnail_upload"):
+                    thumbnail_drive_file_id = upload_bytes_to_drive(
                         drive=drive,
                         data=thumbnail_bytes,
                         file_name=(
@@ -729,7 +813,6 @@ def upload(
                         folder_id=thumbnail_folder_id,
                         mimetype="image/jpeg"
                     )
-                )
             except Exception as exc:
                 print(
                     "Thumbnail upload failed:",
@@ -739,16 +822,15 @@ def upload(
 
         if preview_bytes:
             try:
-                preview_folder_id = (
-                    get_or_create_child_folder(
+                with trace.step("drive_preview_folder"):
+                    preview_folder_id = get_or_create_child_folder(
                         drive=drive,
                         parent_folder_id=event["folder_id"],
                         folder_name=PREVIEW_FOLDER_NAME
                     )
-                )
 
-                preview_drive_file_id = (
-                    upload_bytes_to_drive(
+                with trace.step("drive_preview_upload"):
+                    preview_drive_file_id = upload_bytes_to_drive(
                         drive=drive,
                         data=preview_bytes,
                         file_name=(
@@ -758,7 +840,6 @@ def upload(
                         folder_id=preview_folder_id,
                         mimetype="image/jpeg"
                     )
-                )
             except Exception as exc:
                 print(
                     "Preview upload failed:",
@@ -777,22 +858,24 @@ def upload(
         raise HTTPException(status_code=503, detail=detail) from exc
 
     try:
-        media_record = save_media_record(
-            supabase=supabase,
-            event_id=event["id"],
-            drive_file_id=drive_file_id,
-            thumbnail_drive_file_id=thumbnail_drive_file_id,
-            preview_drive_file_id=preview_drive_file_id,
-            file_name=unique_name,
-            content_type=file.content_type,
-            size_bytes=file_size,
-        )
+        with trace.step("supabase_media_insert"):
+            media_record = save_media_record(
+                supabase=supabase,
+                event_id=event["id"],
+                drive_file_id=drive_file_id,
+                thumbnail_drive_file_id=thumbnail_drive_file_id,
+                preview_drive_file_id=preview_drive_file_id,
+                file_name=unique_name,
+                content_type=file.content_type,
+                size_bytes=file_size,
+            )
     except Exception:
         media_record = None
 
     if media_record is None:
         try:
-            media_record = find_saved_media(supabase, event["id"], drive_file_id)
+            with trace.step("supabase_media_verify"):
+                media_record = find_saved_media(supabase, event["id"], drive_file_id)
         except Exception as exc:
             # The insert may have committed despite a failed response. Never
             # delete a Drive file while its database state is unknown.

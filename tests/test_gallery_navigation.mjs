@@ -7,7 +7,7 @@ import {
     loadGallery,
     navigateGalleryPhoto,
     openGalleryModal
-} from '../static/js/gallery.js?v=8'
+} from '../static/js/gallery.js?v=9'
 import { state } from '../static/js/state.js?v=6'
 
 function element() {
@@ -38,6 +38,9 @@ test('gallery modal navigates loaded photos by buttons, keyboard, and swipe', as
     const originalDocument = globalThis.document
     const originalWindow = globalThis.window
     const originalFetch = globalThis.fetch
+    const originalAnimationFrame = globalThis.requestAnimationFrame
+    const originalInfo = console.info
+    const performanceLogs = []
     const items = [
         { id: 'photo-1', content_type: 'image/jpeg' },
         { id: 'video-1', content_type: 'video/mp4' },
@@ -63,10 +66,18 @@ test('gallery modal navigates loaded photos by buttons, keyboard, and swipe', as
         ok: true,
         json: async () => ({ items, pagination: { has_more: false } })
     })
+    console.info = label => {
+        if (label === 'qr_photo_perf') performanceLogs.push(label)
+    }
+    globalThis.requestAnimationFrame = () => {
+        throw new Error('Monitoring disabled must not schedule a measurement frame')
+    }
 
     try {
         await loadGallery(true)
         assert.equal(elements.galleryGrid.children.length, 3)
+        elements.galleryGrid.children[0].children[0].children[0].onload()
+        assert.equal(performanceLogs.length, 0)
         bindGalleryModalEvents()
 
         openGalleryModal(items[0])
@@ -111,5 +122,7 @@ test('gallery modal navigates loaded photos by buttons, keyboard, and swipe', as
         globalThis.document = originalDocument
         globalThis.window = originalWindow
         globalThis.fetch = originalFetch
+        globalThis.requestAnimationFrame = originalAnimationFrame
+        console.info = originalInfo
     }
 })
