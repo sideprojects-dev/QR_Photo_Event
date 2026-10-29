@@ -2,6 +2,7 @@ import io as io_module
 import os
 import uuid
 import warnings
+from contextlib import nullcontext
 from datetime import datetime
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request
@@ -246,14 +247,10 @@ def get_media_by_id(supabase, media_id: str):
 
 
 def get_accessible_media(supabase, media_id: str, access: str | None, trace=None):
-    if trace is None:
+    with trace.step("media_lookup") if trace is not None else nullcontext():
         record = get_media_by_id(supabase, media_id)
+    with trace.step("access_check") if trace is not None else nullcontext():
         allowed = has_event_access(record["event_id"], access)
-    else:
-        with trace.step("media_lookup"):
-            record = get_media_by_id(supabase, media_id)
-        with trace.step("access_check"):
-            allowed = has_event_access(record["event_id"], access)
     if not allowed:
         raise HTTPException(status_code=404, detail="Media not found.")
     return record
@@ -377,26 +374,27 @@ def stream_drive_file(
             with trace.step("drive_metadata"):
                 file_size = get_drive_file_size(drive, drive_file_id)
     file_size = int(file_size)
-    start, end = (parse_byte_range(range_header, file_size)
-                  if range_header else (0, file_size - 1))
-    headers = {
-        "Cache-Control": "private, no-store",
-        "X-Robots-Tag": "noindex, nofollow",
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(end - start + 1 if file_size else 0),
-    }
-    if content_disposition:
-        headers["Content-Disposition"] = content_disposition
-    if range_header:
-        headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-    return StreamingResponse(
-        iter_drive_range(
-            drive_file_id, start, end, trace_id=trace.trace_id if trace else None
-        ) if file_size else iter(()),
-        status_code=206 if range_header else 200,
-        media_type=media_type,
-        headers=headers,
-    )
+    with trace.step("response_prepare") if trace is not None else nullcontext():
+        start, end = (parse_byte_range(range_header, file_size)
+                      if range_header else (0, file_size - 1))
+        headers = {
+            "Cache-Control": "private, no-store",
+            "X-Robots-Tag": "noindex, nofollow",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(end - start + 1 if file_size else 0),
+        }
+        if content_disposition:
+            headers["Content-Disposition"] = content_disposition
+        if range_header:
+            headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        return StreamingResponse(
+            iter_drive_range(
+                drive_file_id, start, end, trace_id=trace.trace_id if trace else None
+            ) if file_size else iter(()),
+            status_code=206 if range_header else 200,
+            media_type=media_type,
+            headers=headers,
+        )
 
 
 @router.get("/media/{media_id}/thumbnail")
@@ -412,7 +410,8 @@ def stream_media_thumbnail(media_id: str, access: str | None = None):
 
 
 def _stream_media_thumbnail(media_id, access, trace):
-    supabase = get_supabase()
+    with trace.step("supabase_client"):
+        supabase = get_supabase()
     media_record = get_accessible_media(
         supabase=supabase,
         media_id=media_id,
@@ -430,9 +429,9 @@ def _stream_media_thumbnail(media_id, access, trace):
         "thumbnail_drive_file_id"
     )
 
-    drive = get_drive_service()
-
     if thumbnail_drive_file_id:
+        with trace.step("drive_client"):
+            drive = get_drive_service()
         return stream_drive_file(
             drive=drive,
             drive_file_id=thumbnail_drive_file_id,
@@ -440,10 +439,19 @@ def _stream_media_thumbnail(media_id, access, trace):
             trace=trace
         )
 
+    # Legacy media has no dedicated thumbnail. Its original size was saved
+    # during upload and is already present in the Supabase record.
+    file_size = media_record.get("size_bytes")
+    if file_size is None:
+        with trace.step("drive_client"):
+            drive = get_drive_service()
+    else:
+        drive = None  # The stream iterator acquires its own thread-local client.
     return stream_drive_file(
         drive=drive,
         drive_file_id=media_record["drive_file_id"],
         media_type=media_record["content_type"],
+        file_size=file_size,
         trace=trace
     )
 
